@@ -1,0 +1,46 @@
+# Archivos del sistema
+desktop.ini
+Thumbs.db
+# Entornos
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+# Jupyter
+.ipynb_checkpoints/
+.notebooks/
+# Datos
+datos/
+*.csv
+*.xlsx
+*.parquet
+*.feather
+*.db
+*.sqlite
+*.duckdb
+# Entregables
+entregables/
+reports/
+# Archivos de log
+*.log
+# Configuración de IDE
+.vscode/
+.idea/
+# Datos del proyecto (carpetas numeradas)
+02_datos/*
+!02_datos/**/.gitkeep
+05_modelos/*
+!05_modelos/.gitkeep
+# Archivos comprimidos y modelos serializados
+*.zip
+*.7z
+*.rar
+*.pkl
+*.joblib
+*.xls
+*.xlsm
+# Herramientas de agente
+.atl/
+# Repo embebido de soporte (contiene su propio .git y .env)
+Soporte/

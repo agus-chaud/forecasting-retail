@@ -1,0 +1,34 @@
+INSTRUCCIONES PARA PROGRAMAR LA EJECUCIÓN AUTOMÁTICA (WINDOWS)
+
+Puedes automatizar la ejecución de los scripts de reentrenamiento y predicción usando el Programador de tareas de Windows. Sigue estos pasos para cada script:
+
+1. Abre el Programador de tareas de Windows
+   - Pulsa Win + S, escribe "Programador de tareas" y ábrelo.
+
+2. Crea una nueva tarea 
+   - Haz clic en "Crear tarea ..." en el panel derecho.
+
+3. Ponle un nombre descriptivo
+   - Ejemplo: Reentrenamiento modelo retail o Ejecución predicciones retail.
+
+4. Elige el desencadenador
+   - Selecciona cuándo quieres que se ejecute el script (diario, semanal, a una hora concreta, etc.).
+
+5. Configura la acción
+   - Elige "Iniciar un programa".
+   - En "Programa o script" pon la ruta al ejecutable de Python de tu entorno virtual
+   - En "Agregar argumentos" pon el nombre del script:
+     reentrenamiento.py
+     o
+     ejecucion.py
+   - En "Iniciar en (opcional)" pon la ruta de la carpeta de despliegue:
+     C:\Users\isaac\Google Drive\DS4B\CursoMachineLearningPython2\Casos\ML\02_Retail\07_despliegue
+
+6. Finaliza la tarea
+   - Haz clic en "Finalizar" y asegúrate de que la tarea esté habilitada.
+
+Repite el proceso para el otro script si quieres programar ambos.
+
+CONSEJO:
+- Si usas un entorno virtual, asegúrate de que el ejecutable de Python corresponde a ese entorno para que tenga todas las librerías necesarias.
+- Puedes probar primero los comandos manualmente en una terminal para asegurarte de que funcionan correctamente.
