@@ -226,7 +226,7 @@ Resultados sobre la serie original (1.044 días de `train`):
 
 Los dos coinciden en que no hay tendencia ni deriva. El KPSS cerca del límite y la media trimestral que va de 60,3 a 83,5 muestran que la media no es del todo constante, pero esa variación es estacional (ola anual y ciclo semanal), y ninguno de los dos tests está diseñado para medirla. Los 21 retardos que eligió ADF (tres semanas) confirman el peso del ciclo semanal.
 
-**Conclusión:** Nunca decidir la diferenciación con un único test; usar dos con hipótesis opuestas y mirar los gráficos. Recordar que los dos miden tendencia y deriva, no estacionalidad: la diferencia estacional se decide con la serie diferenciada y la autocorrelación en los múltiplos del período. `d = 0` es un punto de partida; se revisa en la parte B si la serie con diferencia estacional muestra otra cosa.
+**Conclusión:** Nunca decidir la diferenciación con un único test; usar dos con hipótesis opuestas y mirar los gráficos. Recordar que los dos miden tendencia y deriva, no estacionalidad: la diferencia estacional se decide con la serie diferenciada y la autocorrelación en los múltiplos del período. `d = 0` es un punto de partida; se revisa en la parte B si la serie con diferencia estacional muestra otra cosa. *(Actualizado por DEC-013: la parte B confirmó `d = 0` y además eligió `D = 0`.)*
 
 **Código afectado:** `03_notebooks/04_SARIMA.ipynb`, sección 3, parte A (funciones `graficar_media_desvio_movil`, `test_estacionariedad`).
 
@@ -290,5 +290,33 @@ Efecto medido: ADF −3,569 (p = 0,0064) en la original contra −3,573 (p = 0,0
 **Conclusión:** Un cero por tienda cerrada no es demanda: tratarlo antes de modelar. Para pronosticar un cierre futuro alcanza con una regla (cerrado = 0), sin pedírselo al modelo.
 
 **Código afectado:** `03_notebooks/04_SARIMA.ipynb`, sección 2.5 (función `imputar_cierres`).
+
+---
+
+## DEC-013: Sin diferenciar (`d = 0`, `D = 0`); el ciclo semanal con términos estacionales
+
+**Área:** modelado | **Fase:** 04 SARIMA (paso 3, parte B) | **Fecha:** 2026-11-16 | **Estado:** Vigente
+
+**Decisión:** El modelo base es un SARIMA(p, 0, q)(P, 0, Q)₇ sobre `y_modelo`: sin diferencia simple ni estacional. El ciclo semanal lo capturan los términos estacionales `P` y `Q` con `s = 7`. La misma especificación con `D = 1` se compara en el backtesting del paso 5 como alternativa. Funciones: `diferenciar`, `resumen_diferenciacion`.
+
+**Alternativa descartada:** (a) Diferencia estacional (`D = 1`), lo más común en tutoriales con datos semanales. (b) Diferencia simple (`d = 1`). (c) Las dos (`d = 1`, `D = 1`).
+
+**Por qué la descartamos:**
+
+| Versión | ADF p | KPSS p | Autocorr. retardo 1 | Autocorr. retardo 7 | Desvío |
+|---|---|---|---|---|---|
+| **Sin diferenciar (elegida)** | 0,006 | 0,077 | 0,43 | 0,41 | 17,7 |
+| Simple (`d = 1`) | < 0,001 | > 0,10 | −0,29 | 0,23 | 18,8 |
+| Estacional (`D = 1`) | < 0,001 | > 0,10 | 0,27 | −0,45 | 19,3 |
+| Las dos | < 0,001 | > 0,10 | −0,46 | −0,52 | 23,3 |
+
+- Las cuatro versiones salen estacionarias en los dos tests, así que los tests no alcanzan para elegir.
+- Cada diferencia que sobra deja una autocorrelación negativa cerca de −0,5 en el retardo que diferenció y sube el desvío (sobrediferenciación). Es lo que pasa con `D = 1` en el retardo 7 y con `d = 1` en el retardo 1.
+- La fuerza estacional semanal de `y_modelo` es 0,46. La regla de Hyndman y Athanasopoulos (*Forecasting: Principles and Practice*, cap. 9) aplica `D = 1` recién por encima de 0,64.
+- El argumento a favor de `D = 1` es que, sin diferenciar, la autocorrelación en los múltiplos de 7 casi no baja (0,40, 0,35, 0,36, 0,36, 0,34, 0,29 y 0,33 en los retardos 7 a 49). Pero ese patrón plano es el de un ciclo **fijo**: el domingo suma unas 15,5 unidades en toda la serie (descomposición clásica, 2.2). La diferencia estacional es para un ciclo que cambia de forma al azar con el tiempo; aplicada a un ciclo fijo lo borra y deja el −0,45 en el retardo 7.
+
+**Conclusión:** Usar la menor cantidad de diferencias que deja la serie estacionaria. Cuando los tests no discriminan, decidir con la autocorrelación en el retardo diferenciado (cerca de −0,5 significa que la diferencia sobra) y con el desvío (si sube, se agregó ruido). Como la evidencia sobre `D` no es unánime, la decisión final entre `D = 0` y `D = 1` la toma el error del backtesting en el paso 5.
+
+**Código afectado:** `03_notebooks/04_SARIMA.ipynb`, sección 3, parte B (secciones 3.4 y 3.5).
 
 ---
