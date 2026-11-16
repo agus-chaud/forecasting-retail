@@ -1,0 +1,12 @@
+pandas>=3.0
+numpy
+matplotlib
+seaborn
+scipy
+sqlalchemy
+python-dotenv
+pyjanitor
+openpyxl
+pyarrow
+statsmodels
+ipykernel
