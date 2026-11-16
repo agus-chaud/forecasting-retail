@@ -2,7 +2,7 @@
 
 Este documento acompaña a [`04_SARIMA.ipynb`](../03_notebooks/04_SARIMA.ipynb). La idea es que, al leer una celda, puedas saber qué problema resuelve y por qué está escrita así y no de otra forma. 
 
-Los ejemplos usan siempre la misma serie, `CA_3` / `FOODS_3_586`: las ventas diarias de un producto de comida en una tienda de California, del 2013-01-01 al 2015-11-10. Los números salen del notebook. Las secciones 1 a 6 explican lo que ya está construido. La sección 7 está construida a medias (la parte A del paso 3). De la 8 en adelante se explica lo que todavía falta construir, así que esa parte se va a revisar cuando exista el código.
+Los ejemplos usan siempre la misma serie, `CA_3` / `FOODS_3_586`: las ventas diarias de un producto de comida en una tienda de California, del 2013-01-01 al 2015-11-10. Los números salen del notebook. Las secciones 1 a 7 explican lo que ya está construido (pasos 1 a 3). De la sección 11 ya existe una parte: las líneas base y el backtesting, que se fijaron antes de modelar. El resto, de la 8 en adelante, explica lo que todavía falta construir, así que se va a revisar cuando exista el código.
 
 ---
 
@@ -12,11 +12,11 @@ En un problema tabular típico (predecir si un cliente compra, por ejemplo) cada
 
 En una serie de tiempo lo que pasó ayer dice algo sobre lo que pasa hoy. Esta serie vendió 73,8 unidades por día en promedio, pero si sabés que hoy es domingo y que el domingo pasado se vendieron 95, tu estimación cambia bastante. Esa dependencia entre días cercanos es justamente lo que vamos a modelar, y tiene dos consecuencias prácticas.
 
-**No se parte al azar.** el split es por fecha: todo `train` es anterior a todo `valid` (DEC-002).
+**No se parte al azar.** El split es por fecha: todo `train` es anterior a todo `valid` (DEC-002).
 
-**La validación imita el uso real.** En producción vas a tener la historia hasta hoy y vas a tener que predecir los próximos días. El split reproduce eso: `train` hasta el 2015-11-10, `valid` los 28 días siguientes y `reserva` los 23 días posteriores, que no se tocan hasta el final. Que `valid` tiene 28 días porque son exactamente 4 semanas
+**La validación imita el uso real.** En producción vas a tener la historia hasta hoy y vas a tener que predecir los próximos días. El split reproduce eso: `train` hasta el 2015-11-10, `valid` los 28 días siguientes y `reserva` los 23 días posteriores, que no se tocan hasta el final. `valid` tiene 28 días porque son exactamente 4 semanas.
 
-Una tercera regla, menos obvia: cualquier número que se calcule a partir de los datos (un umbral, una media para imputar, los parámetros del modelo) se calcula solo con `train`. Si usás `valid` para decidir algo, deja de ser una prueba honesta.
+Una tercera regla, menos obvia: cualquier número que se calcule a partir de los datos (un umbral, una media para imputar, los parámetros del modelo) se calcula solo con `train`. Si usás `valid` para decidir algo, deja de ser una prueba honesta. Por eso los órdenes del modelo se eligen con varias pruebas dentro de `train` (backtesting, sección 11) y `valid` se usa una sola vez, al final (DEC-011).
 
 ## 2. Cómo se representa una serie en pandas
 
@@ -26,7 +26,7 @@ Para `statsmodels`, la librería donde viven ARIMA y SARIMA, una serie es una `p
 
 El índice de fechas también te da herramientas cómodas: `y["2014-07"]` devuelve todo julio de 2014, `y.index.day_of_week` da el día de la semana (0 es lunes) y `y.resample("MS").mean()` agrupa por mes.
 
-Un detalle que confunde: el tablón tiene una columna `wday`  donde 1 es sábado. El notebook 04 no la usa; usa `day_of_week` de pandas, donde 0 es lunes y 6 es domingo. Son dos numeraciones distintas del mismo dato.
+Un detalle que confunde: el tablón tiene una columna `wday` donde 1 es sábado. El notebook 04 no la usa; usa `day_of_week` de pandas, donde 0 es lunes y 6 es domingo. Son dos numeraciones distintas del mismo dato.
 
 ## 3. Mirar la serie antes de modelar
 
@@ -40,7 +40,11 @@ En esta serie el gráfico muestra tres cosas, que después los números confirma
 - Una ola anual. Juntando los tres años, agosto promedia 87,4 y enero 62,3.
 - Ninguna tendencia de largo plazo. La media por año fue 72,8, 75,3 y 73,2.
 
-Y una rareza: los únicos dos días con cero ventas son los 25 de diciembre de 2013 y 2014. No es que nadie quiso comprar; la tienda estaba cerrada. Esa diferencia (no hubo demanda contra no se pudo vender) importa, y todavía está pendiente decidir cómo tratarla.
+Y una rareza: los únicos dos días con cero ventas son los 25 de diciembre de 2013 y 2014. No es que nadie quiso comprar; la tienda estaba cerrada. Esa diferencia (no hubo demanda contra no se pudo vender) importa: si se dejan así, el modelo aprende que un 25 de diciembre "la demanda cae a cero".
+
+En la sección 2.5 del notebook esos dos días se **imputan**: se reemplazan por lo que se vendió el mismo día de la semana anterior (67 en 2013 y 73 en 2014). La serie tratada se llama `y_modelo` y es la que se usa desde el paso 3. La alternativa era una variable indicadora (vale 1 ese día y 0 el resto) como variable externa del SARIMAX, pero esa variable recién puede entrar en el paso 5, y mientras tanto los ceros contaminarían los tests y la autocorrelación. Imputar no cambia lo que se evalúa, porque ni `valid` ni los cortes del backtesting incluyen un 25 de diciembre. Para predecir un 25 de diciembre futuro alcanza con una regla: tienda cerrada, 0 ventas (DEC-012).
+
+Hay un posible patrón más que todavía no se probó: los días 1 a 13 de cada mes parecen vender algo más que los días 22 a 31, algo típico de la comida cuando la gente cobra. Como los meses no tienen todos la misma cantidad de días, no puede ser el período de un SARIMA. Si se confirma, entraría como variable externa en el paso 5 (pendiente en `decisions.md`).
 
 ## 4. Las piezas de una serie
 
@@ -110,9 +114,14 @@ La forma estándar de volver estacionaria una serie es **diferenciarla**: en vez
 - **Diferencia simple**: `y[t] − y[t−1]`, el cambio respecto de ayer. Elimina una tendencia. En pandas, `y.diff(1)`.
 - **Diferencia estacional**: `y[t] − y[t−7]`, el cambio respecto del mismo día de la semana anterior. Elimina el ciclo semanal, porque compara domingo contra domingo. En pandas, `y.diff(7)`.
 
-Cuántas veces se diferencia es una decisión, y el exceso también es un problema. Si diferenciás una serie que ya era estacionaria, le agregás ruido y una correlación negativa artificial entre días consecutivos. Una señal típica de sobrediferenciación es que la autocorrelación en el retardo 1 (sección 8) quede cerca de −0,5. Por lo general se termina con una diferencia simple, una estacional o ninguna, y casi nunca con más de dos en total.
+Cuántas veces se diferencia es una decisión, y el exceso también es un problema (**sobrediferenciación**). Si diferenciás una serie que no lo necesitaba, le agregás ruido y una correlación negativa artificial. La huella típica es una autocorrelación (sección 8) cerca de −0,5 **en el retardo que diferenciaste**: en el 1 si sobra la diferencia simple, en el 7 si sobra la estacional. La otra señal es que el desvío de la serie sube en vez de bajar. Por lo general se termina con una diferencia simple, una estacional o ninguna, y casi nunca con más de dos en total.
 
-Para esta serie, por lo que vimos, lo esperable es que la diferencia estacional de 7 sea necesaria (el ciclo semanal es fuerte) y que la simple no lo sea (no hay tendencia). Pero eso hay que comprobarlo en el paso 3, no suponerlo.
+Antes de mirar los datos, lo esperable para esta serie era que la diferencia estacional de 7 fuera necesaria (el ciclo semanal es fuerte) y que la simple no (no hay tendencia). La parte B mostró que **ninguna de las dos hace falta**. El motivo está en la diferencia entre dos tipos de estacionalidad:
+
+- **Estacionalidad fija** (*determinística*): el patrón tiene siempre la misma forma. En esta serie el domingo suma unas 15,5 unidades en los tres años (sección 5). Se modela con términos estacionales (`P`, `Q` en SARIMA, sección 9) o con variables de día de la semana, sin restar nada.
+- **Estacionalidad que cambia al azar** (*estocástica*): la forma del patrón va derivando con el tiempo, como un paseo aleatorio que se repite cada 7 días. Esa es la que necesita la diferencia estacional.
+
+Si aplicás la diferencia estacional a un patrón fijo, borrás algo que el modelo podía aprender directamente, y aparece la huella de −0,5 en el retardo 7.
 
 ### Tests de estacionariedad
 
@@ -127,15 +136,36 @@ El nombre "raíz unitaria", que aparece en todo lo que leas sobre ADF, describe 
 
 ### Lo que dio la serie (parte A del paso 3)
 
-La sección 3 del notebook está partida en dos. La parte A diagnostica la serie original; la parte B, todavía sin construir, la diferencia.
+La sección 3 del notebook está partida en dos. La parte A diagnostica la serie original; la parte B la diferencia y decide `d` y `D`.
 
 En la serie original, ADF da un estadístico de −3,57, más negativo que el valor crítico de −2,86 al 5 %, con p = 0,006: se rechaza la raíz unitaria. KPSS da 0,419, por debajo del crítico al 5 % (0,463) pero por encima del de 10 % (0,347), con p ≈ 0,07. Al 5 % los dos dicen "estacionaria", aunque KPSS queda cerca del límite.
 
-Eso no significa que la serie esté lista para ARIMA tal como viene. La media por trimestre va de 60,3 a 83,5, y eso es la ola anual; el ciclo semanal sigue ahí entero. Los tests coinciden en que no hay tendencia ni deriva, lo que sugiere no usar la diferencia simple (d = 0 como punto de partida). La estacionalidad es otro tema, y se resuelve con la diferencia estacional (parte B) y los términos de Fourier (sección 6).
+Eso no significa que la serie esté lista para ARIMA tal como viene. La media por trimestre va de 60,3 a 83,5, y eso es la ola anual; el ciclo semanal sigue ahí entero. Los tests coinciden en que no hay tendencia ni deriva, lo que sugiere no usar la diferencia simple (d = 0 como punto de partida). La estacionalidad es otro tema: la semanal se decide en la parte B y la anual se resuelve con los términos de Fourier (sección 6). Con `y_modelo` (sin los 25 de diciembre) los resultados casi no cambian: ADF −3,57 y KPSS 0,400.
 
 Un detalle de la salida que vale la pena mirar: ADF eligió 21 retardos, justo tres semanas. El test necesita que sus residuos queden sin patrón, y para lograrlo tuvo que incorporar el ciclo semanal como retardos. Cuando un número así coincide con un múltiplo del período, rara vez es casualidad.
 
 Los tests se corren con la función `test_estacionariedad`, que se va a reutilizar en la parte B sobre las series diferenciadas. KPSS se corre con `regression="c"` (estacionaria alrededor de un nivel fijo) y no con `"ct"` (alrededor de una recta), porque la serie no tiene tendencia (DEC-010).
+
+### Lo que dio la serie (parte B del paso 3)
+
+La parte B aplica a `y_modelo` las cuatro combinaciones posibles (con la función `diferenciar`) y mira tres cosas en cada una: los tests, la autocorrelación en los retardos 1, 7 y 14, y el desvío.
+
+| Versión | Autocorr. retardo 1 | Autocorr. retardo 7 | Desvío |
+|---|---|---|---|
+| **Sin diferenciar** | 0,43 | 0,41 | **17,7** |
+| Simple (`d = 1`) | **−0,29** | 0,23 | 18,8 |
+| Estacional (`D = 1`) | 0,27 | **−0,45** | 19,3 |
+| Las dos | −0,46 | −0,52 | 23,3 |
+
+Lo primero que muestra la tabla es que **los tests no alcanzan para elegir**: las cuatro versiones salen estacionarias en ADF y en KPSS. Lo que decide es lo demás:
+
+- La diferencia simple deja −0,29 en el retardo 1 y sube el desvío. Sobra, como ya anticipaba la parte A.
+- La diferencia estacional deja −0,45 en el retardo 7, muy cerca del −0,5 de la sobrediferenciación, y también sube el desvío.
+- La fuerza estacional semanal de `y_modelo` es 0,46. La regla práctica de Hyndman y Athanasopoulos aplica `D = 1` recién cuando supera 0,64.
+
+Hay un argumento a favor de `D = 1`: sin diferenciar, la autocorrelación en los múltiplos de 7 casi no baja (0,40 en el retardo 7, 0,33 en el 49). Pero eso es lo que produce un ciclo **fijo**: si cada domingo suma lo mismo, un domingo se parece a todos los anteriores, estén a una o a siete semanas.
+
+La decisión es `d = 0` y `D = 0`: el modelo base es un SARIMA(p, 0, q)(P, 0, Q)₇ y el ciclo semanal lo capturan los términos estacionales. Como la evidencia sobre `D` no es unánime, la variante con `D = 1` se compara en el backtesting del paso 5, y ahí decide el error (DEC-013).
 
 ## 8. Autocorrelación: ACF y PACF (paso 4)
 
@@ -153,7 +183,7 @@ Estos gráficos se usan para elegir los órdenes del modelo (las letras de la se
 | La ACF se corta de golpe después del retardo *q* y la PACF decae de a poco | Un componente MA de orden *q* |
 | Picos en los retardos 7, 14, 21 | Estructura estacional semanal: lo mismo, mirando solo los múltiplos de 7 |
 
-Con datos reales los gráficos casi nunca son tan limpios como en los libros. Sirven para elegir un punto de partida razonable y un par de alternativas cercanas, que después se comparan con un criterio objetivo (sección 10). Siempre se leen sobre la serie ya diferenciada, porque una serie no estacionaria tiene una ACF que decae muy lento y tapa todo lo demás.
+Con datos reales los gráficos casi nunca son tan limpios como en los libros. Sirven para elegir un punto de partida razonable y un par de alternativas cercanas, que después se comparan con un criterio objetivo (sección 10). Se leen sobre la serie en la forma en que se va a modelar: si necesitó diferencias, sobre la diferenciada, porque una serie no estacionaria tiene una ACF que decae muy lento y tapa todo lo demás. En esta serie no hizo falta diferenciar (sección 7), así que se leen sobre `y_modelo` tal cual. Las barras altas en 7, 14, 21… que no bajan son el ciclo semanal fijo, y apuntan a términos estacionales `P` o `Q`.
 
 ## 9. ARIMA, SARIMA y SARIMAX (paso 5)
 
@@ -163,9 +193,9 @@ Con datos reales los gráficos casi nunca son tan limpios como en los libros. Si
 - **I(d)**, integrado: la serie se diferencia *d* veces antes de aplicar lo demás (sección 7). El modelo después deshace la diferencia para devolver las predicciones en unidades vendidas.
 - **MA(q)**, media móvil: el valor de hoy también depende de los errores que cometió el modelo en los *q* días anteriores. Si ayer el modelo predijo 70 y se vendieron 80, ese error de +10 puede ajustar la predicción de hoy. No tiene nada que ver con la media móvil de la sección 3, aunque se llame igual; es una coincidencia de nombres que confunde a todo el mundo.
 
-**SARIMA(p, d, q)(P, D, Q)s** agrega la misma estructura en los retardos estacionales. Con s = 7, P = 1 significa "el valor de hoy depende del valor de hace 7 días", D = 1 es la diferencia estacional `y[t] − y[t−7]` y Q = 1 usa el error de hace 7 días. Un ejemplo de especificación para esta serie podría ser SARIMA(1, 0, 1)(1, 1, 1)7, pero los números concretos se eligen en los pasos 3 y 4.
+**SARIMA(p, d, q)(P, D, Q)s** agrega la misma estructura en los retardos estacionales. Con s = 7, P = 1 significa "el valor de hoy depende del valor de hace 7 días", D = 1 es la diferencia estacional `y[t] − y[t−7]` y Q = 1 usa el error de hace 7 días. Con lo que dio el paso 3 (`d = 0`, `D = 0`), un ejemplo de especificación para esta serie podría ser SARIMA(1, 0, 1)(1, 0, 1)7: ahí el ciclo semanal lo capturan `P = 1` y `Q = 1`, sin diferencia estacional. Los valores concretos de `p`, `q`, `P` y `Q` se eligen en el paso 4.
 
-**SARIMAX** agrega la X: variables externas que no salen de la propia serie. Acá son los términos de Fourier de la sección 6. En `statsmodels` el modelo funciona como una regresión lineal sobre esas variables, donde el error de la regresión, en vez de ser ruido independiente, sigue un SARIMA. La regresión captura la ola anual y el SARIMA captura el ciclo semanal y la dependencia entre días cercanos.
+**SARIMAX** agrega la X: variables externas que no salen de la propia serie. Acá son los términos de Fourier de la sección 6, y quizás un efecto de día del mes si se confirma (sección 3). En `statsmodels` el modelo funciona como una regresión lineal sobre esas variables, donde el error de la regresión, en vez de ser ruido independiente, sigue un SARIMA. La regresión captura la ola anual y el SARIMA captura el ciclo semanal y la dependencia entre días cercanos.
 
 ¿Por qué no un SARIMA con s = 365 y listo? Por dos razones. La primera es la misma del MSTL: con menos de 3 ciclos anuales no hay datos para estimar la relación entre un día y el mismo día del año anterior. La segunda es computacional: un modelo con retardos de 365 días es muy lento de ajustar y, en la práctica, con datos diarios muchas veces ni siquiera converge.
 
@@ -173,7 +203,9 @@ Con datos reales los gráficos casi nunca son tan limpios como en los libros. Si
 
 Con varios candidatos razonables (por ejemplo, distintos p, q, P, Q, o distinta cantidad de pares de Fourier) hace falta un criterio para elegir.
 
-El **AIC** (*Akaike Information Criterion*) resume qué tan bien ajusta un modelo a `train` y le resta puntos por cada parámetro que agrega. Más bajo es mejor. Existe para evitar el sobreajuste de la sección 6: un modelo con más parámetros siempre ajusta mejor los datos que vio, y el AIC solo lo premia si la mejora compensa la complejidad. Una precaución: solo se pueden comparar AIC de modelos con el mismo orden de diferenciación (los mismos d y D), porque si cambia la diferenciación cambian los datos sobre los que se mide el ajuste.
+El **AIC** (*Akaike Information Criterion*) resume qué tan bien ajusta un modelo a `train` y le resta puntos por cada parámetro que agrega. Más bajo es mejor. Existe para evitar el sobreajuste de la sección 6: un modelo con más parámetros siempre ajusta mejor los datos que vio, y el AIC solo lo premia si la mejora compensa la complejidad. Una precaución: solo se pueden comparar AIC de modelos con el mismo orden de diferenciación (los mismos d y D), porque si cambia la diferenciación cambian los datos sobre los que se mide el ajuste. Por eso la comparación entre `D = 0` y `D = 1` (sección 7) no se hace con AIC sino con el error del backtesting (sección 11), que mide a los dos modelos sobre los mismos días.
+
+El AIC mide el ajuste a los datos que el modelo ya vio. La decisión final entre candidatos se toma con el **MAE del backtesting**, que mide qué tan bien predicen días que no vieron (DEC-011). El AIC sirve para descartar rápido los candidatos claramente peores.
 
 Elegido un modelo, se revisan sus **residuos**: la diferencia entre lo vendido y lo que el modelo predijo para cada día de `train`. Si el modelo capturó toda la estructura, los residuos tienen que parecer ruido sin patrón, lo que se llama *ruido blanco*. Se revisan tres cosas:
 
@@ -195,9 +227,25 @@ Para medir el error sobre `valid` hay varias métricas y cada una tiene un sesgo
 | **RMSE** (raíz del error cuadrático medio) | Parecido al MAE, pero castiga más los errores grandes | Un solo día muy malo lo infla |
 | **MAPE** (error porcentual absoluto medio) | El error como porcentaje de lo vendido | Se rompe cuando las ventas reales son 0 (división por cero), como el 25 de diciembre |
 
-El MAE solo no dice si un modelo es bueno. Hace falta compararlo con una referencia simple, un **baseline**. El estándar en series con estacionalidad es el **naive estacional**: predecir que cada día se vende lo mismo que el mismo día de la semana anterior. No requiere entrenar nada. Si un SARIMA no le gana a eso, toda la complejidad no está sirviendo. Es más común de lo que parece, y es la primera comparación que conviene hacer.
+El notebook usa **MAE** como métrica principal, y también lo expresa como % de la media de la serie para tener una idea del tamaño (DEC-011).
 
-Una última aclaración: medir sobre un único bloque de 28 días da una sola cifra, que puede haber salido buena o mala por suerte. La evaluación más sólida repite el ejercicio desde varios puntos de corte (validación con origen móvil). La solución del curso lo hace con `TimeSeriesSplit` de scikit-learn: 5 cortes con bloques de prueba de 8 días. Para aprender alcanza con un solo corte; para tomar decisiones en serio conviene hacer varios.
+El MAE solo no dice si un modelo es bueno. Hace falta compararlo con una referencia simple, un **baseline** o **línea base**. El notebook usa dos, ninguna de las cuales requiere entrenar nada:
+
+- **Naive estacional**: predecir que cada día se vende lo mismo que el mismo día de la última semana conocida.
+- **Media de 4 semanas**: predecir cada día de la semana con el promedio de sus últimas 4 apariciones (los últimos 4 lunes, etc.).
+
+Si un SARIMA no le gana a eso, toda la complejidad no está sirviendo. Es más común de lo que parece, y por eso la comparación se fijó **antes** de construir el modelo (sección 1.6 del notebook).
+
+Medir sobre un único bloque de 28 días da una sola cifra, que puede haber salido buena o mala por suerte. La evaluación más sólida repite el ejercicio desde varios puntos de corte: es el **backtesting con origen móvil** (*rolling origin*). Se entrena hasta una fecha, se predicen los 28 días siguientes y se compara con lo que pasó; después se corre la fecha 28 días y se repite. El notebook usa 6 cortes, todos dentro de `train`, que cubren de fines de mayo a noviembre de 2015. La solución del curso hace algo parecido con `TimeSeriesSplit` de scikit-learn: 5 cortes con bloques de prueba de 8 días.
+
+Estos son los resultados de las líneas base:
+
+| Línea base | MAE medio | Rango entre cortes | % de la media |
+|---|---|---|---|
+| **Media de 4 semanas** | **13,7** | 11,5 a 15,1 | 18,6 % |
+| Naive estacional | 18,2 | 12,4 a 24,6 | 24,7 % |
+
+La naive estacional es peor y más inestable porque copia el ruido de una sola semana; promediar cuatro lo suaviza. La vara que tiene que superar SARIMA es entonces **13,7 unidades por día**. Los órdenes del modelo y la cantidad de pares de Fourier se eligen con estos mismos 6 cortes, y `valid` se usa una única vez, con el modelo ya elegido.
 
 ## 12. SARIMA contra boosting (paso 6)
 
@@ -214,17 +262,18 @@ Visto de cerca, los dos enfoques buscan lo mismo: usar el pasado reciente de la 
 | Datos que necesita | Funciona con una serie corta | Necesita más datos para no sobreajustar |
 | Interpretación | Cada coeficiente tiene un significado | Hay que usar herramientas aparte (importancia de variables, SHAP) |
 
-La comparación del paso 6 tiene que ser justa: la misma serie, el mismo `train`, los mismos 28 días de `valid` y la misma métrica (MAE), con el naive estacional como piso para los dos. No hay un ganador fijo; depende de la serie. Para una serie estable como esta, con un ciclo semanal limpio y pocos eventos, SARIMA puede competir bien. En series con promociones fuertes o mucha intermitencia, el boosting suele tener ventaja porque puede usar el precio y los eventos de forma más flexible.
+La comparación del paso 6 tiene que ser justa: la misma serie, el mismo `train`, los mismos 28 días de `valid` y la misma métrica (MAE), con la mejor línea base (la media de 4 semanas) como piso para los dos. No hay un ganador fijo; depende de la serie. Para una serie estable como esta, con un ciclo semanal limpio y pocos eventos, SARIMA puede competir bien. En series con promociones fuertes o mucha intermitencia, el boosting suele tener ventaja porque puede usar el precio y los eventos de forma más flexible.
 
 ## Glosario
 
 - **ACF / PACF**: gráficos de autocorrelación total y parcial según el retardo. Sección 8.
 - **ADF / KPSS**: tests de estacionariedad con hipótesis nulas opuestas. Sección 7.
 - **AIC**: criterio para comparar modelos que premia el ajuste y castiga la cantidad de parámetros. Sección 10.
-- **Baseline / naive estacional**: predicción de referencia sin modelo: repetir el mismo día de la semana anterior. Sección 11.
+- **Backtesting (origen móvil)**: repetir la evaluación desde varios puntos de corte dentro de `train`. Sección 11.
+- **Baseline / línea base**: predicción de referencia sin modelo, como el naive estacional (repetir el mismo día de la semana anterior) o la media de 4 semanas. Sección 11.
 - **Demanda intermitente**: serie con muchos días en cero. ARIMA no la modela bien. Ver DEC-006.
 - **Diferenciar**: reemplazar la serie por sus cambios (`y.diff(1)`, `y.diff(7)`). Sección 7.
-- **Estacionalidad**: patrón que se repite con período fijo. Sección 4.
+- **Estacionalidad**: patrón que se repite con período fijo. Sección 4. Puede ser fija (siempre la misma forma) o cambiar al azar con el tiempo; solo la segunda necesita diferencia estacional. Sección 7.
 - **Estacionariedad**: media, varianza y autocorrelación constantes en el tiempo. Sección 7.
 - **Fuga de información (*leakage*)**: usar, al entrenar o validar, datos que en la realidad no estarían disponibles. Sección 1.
 - **Fuerza de un componente**: proporción de la variación que explica, de 0 a 1. Sección 5.
@@ -235,7 +284,9 @@ La comparación del paso 6 tiene que ser justa: la misma serie, el mismo `train`
 - **Media móvil (suavizado)**: promedio de los últimos *n* días. Sección 3. No confundir con el MA de ARIMA.
 - **Residuo**: lo que queda de la serie después de sacar tendencia y estacionalidad, o la diferencia entre lo real y lo predicho por un modelo.
 - **Ruido blanco**: serie sin ningún patrón ni autocorrelación. Es lo que deberían parecer los residuos de un buen modelo.
+- **Imputar**: reemplazar un valor que no representa lo que se quiere medir (por ejemplo, un día de tienda cerrada) por una estimación razonable. Sección 3.
 - **Sobreajuste**: aprender el ruido de los datos de entrenamiento en lugar del patrón. Sección 6.
+- **Sobrediferenciación**: diferenciar más de lo necesario; deja una autocorrelación cerca de −0,5 en el retardo diferenciado y sube el desvío. Sección 7.
 - **Términos de Fourier**: pares seno/coseno que describen una estacionalidad suave con pocos parámetros. Sección 6.
 - **Tendencia**: el nivel de fondo de la serie, que cambia despacio. Sección 4.
 - **Univariado**: modelo que usa solo la historia de una serie. ARIMA y SARIMA lo son; SARIMAX agrega variables externas.
