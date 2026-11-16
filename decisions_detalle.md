@@ -200,3 +200,35 @@ La correlación entre nivel y amplitud es 0,11: prácticamente nula. El ciclo se
 **Código afectado:** `03_notebooks/04_SARIMA.ipynb`, secciones 2.3 y 2.4 (funciones `fuerza`, `terminos_fourier`).
 
 ---
+
+## DEC-010: Estacionariedad con ADF y KPSS juntos; `d = 0` como punto de partida
+
+**Área:** modelado | **Fase:** 04 SARIMA (paso 3, parte A) | **Fecha:** 2026-11-15 | **Estado:** Vigente
+
+**Decisión:** La estacionariedad se diagnostica con dos tests a la vez, ADF (`autolag="AIC"`) y KPSS (`regression="c"`, `nlags="auto"`), mediante la función `test_estacionariedad`. Con los resultados sobre la serie original, el modelo parte sin diferencia simple (`d = 0`). La diferencia estacional (`D`) se decide en la parte B.
+
+**Alternativa descartada:** (a) Usar solo ADF, que es lo más común en tutoriales. (b) KPSS con `regression="ct"` (estacionaria alrededor de una tendencia lineal). (c) Diferenciar de entrada (`d = 1`) "por las dudas".
+
+**Por qué la descartamos:**
+
+| Opción | Problema |
+|---|---|
+| Solo ADF | Un test de hipótesis solo puede rechazar su H0. Si ADF no rechazara, no sabríamos si la serie no es estacionaria o si faltan datos para verlo. KPSS tiene la hipótesis opuesta y cubre ese hueco |
+| KPSS con `"ct"` | Supone una tendencia lineal que la serie no tiene (medias anuales 72,8, 75,3 y 73,2; 72,4 en la primera mitad y 75,2 en la segunda) |
+| `d = 1` de entrada | Diferenciar una serie que no lo necesita agrega ruido y una autocorrelación negativa artificial en el retardo 1 (sobrediferenciación) |
+
+Resultados sobre la serie original (1.044 días de `train`):
+
+| Test | Estadístico | Valores críticos | p | Lectura al 5 % |
+|---|---|---|---|---|
+| ADF | −3,569 (21 retardos) | −3,44 (1 %), −2,86 (5 %), −2,57 (10 %) | 0,006 | Estacionaria |
+| KPSS | 0,419 | 0,347 (10 %), 0,463 (5 %), 0,739 (1 %) | ≈ 0,07 | Estacionaria (rechazaría al 10 %) |
+
+Los dos coinciden en que no hay tendencia ni deriva. El KPSS cerca del límite y la media trimestral que va de 60,3 a 83,5 muestran que la media no es del todo constante, pero esa variación es estacional (ola anual y ciclo semanal), y ninguno de los dos tests está diseñado para medirla. Los 21 retardos que eligió ADF (tres semanas) confirman el peso del ciclo semanal.
+
+**Conclusión:** Nunca decidir la diferenciación con un único test; usar dos con hipótesis opuestas y mirar los gráficos. Recordar que los dos miden tendencia y deriva, no estacionalidad: la diferencia estacional se decide con la serie diferenciada y la autocorrelación en los múltiplos del período. `d = 0` es un punto de partida; se revisa en la parte B si la serie con diferencia estacional muestra otra cosa.
+
+**Código afectado:** `03_notebooks/04_SARIMA.ipynb`, sección 3, parte A (funciones `graficar_media_desvio_movil`, `test_estacionariedad`).
+
+---
+

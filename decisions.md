@@ -23,6 +23,7 @@ los dos archivos.
 | DEC-007 | transversal | Entorno en `.venv/` del repo con `requirements.txt`, registrado como kernel `agentic_ds_forecasting_retail` |
 | DEC-008 | modelado | Descomposición aditiva (la amplitud semanal no crece con el nivel: correlación 0,11) |
 | DEC-009 | modelado | Estacionalidad anual con términos de Fourier como variables externas de SARIMAX, no con MSTL ni `s = 365` |
+| DEC-010 | modelado | Estacionariedad con ADF y KPSS juntos (KPSS alrededor de un nivel); sin diferencia simple como punto de partida (`d = 0`) |
 
 ---
 
@@ -57,5 +58,7 @@ los dos archivos.
 **DEC-008 — Descomposición aditiva.** La serie se descompone como `tendencia + estacionalidad + residuo`. **Por qué:** la amplitud del ciclo semanal no crece con el nivel (correlación 0,11 entre los 35 meses); enero de 2013 (nivel 62,1) y agosto de 2014 (nivel 90,1) tienen la misma amplitud, unas 30 unidades. **Regla:** Antes de elegir entre aditiva y multiplicativa, medir si la amplitud estacional crece con el nivel; no elegir a ojo.
 
 **DEC-009 — Ciclo anual con Fourier.** El ciclo anual entra al modelo como pares seno/coseno (términos de Fourier) usados como variables externas de `SARIMAX`; el ciclo semanal lo modela SARIMA con `s = 7`. **Por qué:** con 2,86 años de datos, MSTL sobreajusta el ciclo anual (salta 9,8 unidades por día de media y copia los 25 de diciembre); con 2 pares de Fourier sale una curva suave de 18,5 unidades de rango que explica el 42 % de la variación lenta. Un SARIMA con `s = 365` es inviable. **Regla:** No estimar una estacionalidad día por día sin al menos 3 ciclos completos; con pocos ciclos, usar una forma suave con pocos parámetros.
+
+**DEC-010 — ADF y KPSS juntos, `d = 0` de partida.** La estacionariedad se diagnostica con los dos tests a la vez; KPSS con `regression="c"` (alrededor de un nivel). En la serie original ADF da p = 0,006 (rechaza la raíz unitaria) y KPSS p ≈ 0,07 (no rechaza la estacionariedad al 5 %), así que se parte de `d = 0`. **Por qué:** tienen hipótesis nulas opuestas; un solo test que no rechaza no prueba nada, dos que coinciden sí. No hay tendencia (medias anuales 72,8, 75,3 y 73,2), por eso `"c"` y no `"ct"`. **Regla:** Nunca decidir la diferenciación con un único test, y recordar que ninguno de los dos mide la estacionalidad: `D` se decide aparte (paso 3, parte B).
 
 ---
