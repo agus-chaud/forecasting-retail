@@ -2,7 +2,7 @@
 
 Este documento acompaña a [`04_SARIMA.ipynb`](../03_notebooks/04_SARIMA.ipynb). La idea es que, al leer una celda, puedas saber qué problema resuelve y por qué está escrita así y no de otra forma. 
 
-Los ejemplos usan siempre la misma serie, `CA_3` / `FOODS_3_586`: las ventas diarias de un producto de comida en una tienda de California, del 2013-01-01 al 2015-11-10. Los números salen del notebook. Las secciones 1 a 6 explican lo que ya está construido; de la 7 en adelante se explica lo que todavía falta construir, así que esa parte se va a revisar cuando exista el código.
+Los ejemplos usan siempre la misma serie, `CA_3` / `FOODS_3_586`: las ventas diarias de un producto de comida en una tienda de California, del 2013-01-01 al 2015-11-10. Los números salen del notebook. Las secciones 1 a 6 explican lo que ya está construido. La sección 7 está construida a medias (la parte A del paso 3). De la 8 en adelante se explica lo que todavía falta construir, así que esa parte se va a revisar cuando exista el código.
 
 ---
 
@@ -12,9 +12,9 @@ En un problema tabular típico (predecir si un cliente compra, por ejemplo) cada
 
 En una serie de tiempo lo que pasó ayer dice algo sobre lo que pasa hoy. Esta serie vendió 73,8 unidades por día en promedio, pero si sabés que hoy es domingo y que el domingo pasado se vendieron 95, tu estimación cambia bastante. Esa dependencia entre días cercanos es justamente lo que vamos a modelar, y tiene dos consecuencias prácticas.
 
-**No se parte al azar.** Si mezclás los días y elegís el 20 % para validar, en el entrenamiento quedan días posteriores a los que querés predecir. El modelo "ve el futuro" (fuga de información, o *data leakage*) y la métrica de validación sale mejor que lo que vas a obtener en producción, donde el futuro no está disponible. Por eso el split es por fecha: todo `train` es anterior a todo `valid` (DEC-002).
+**No se parte al azar.** el split es por fecha: todo `train` es anterior a todo `valid` (DEC-002).
 
-**La validación imita el uso real.** En producción vas a tener la historia hasta hoy y vas a tener que predecir los próximos días. El split reproduce eso: `train` hasta el 2015-11-10, `valid` los 28 días siguientes y `reserva` los 23 días posteriores, que no se tocan hasta el final. Que `valid` tenga 28 días no es casual: son exactamente 4 semanas, así que tiene cuatro lunes, cuatro martes y así con cada día. Si tuviera 30 días, dos días de la semana pesarían más que el resto en la métrica.
+**La validación imita el uso real.** En producción vas a tener la historia hasta hoy y vas a tener que predecir los próximos días. El split reproduce eso: `train` hasta el 2015-11-10, `valid` los 28 días siguientes y `reserva` los 23 días posteriores, que no se tocan hasta el final. Que `valid` tiene 28 días porque son exactamente 4 semanas
 
 Una tercera regla, menos obvia: cualquier número que se calcule a partir de los datos (un umbral, una media para imputar, los parámetros del modelo) se calcula solo con `train`. Si usás `valid` para decidir algo, deja de ser una prueba honesta.
 
@@ -26,7 +26,7 @@ Para `statsmodels`, la librería donde viven ARIMA y SARIMA, una serie es una `p
 
 El índice de fechas también te da herramientas cómodas: `y["2014-07"]` devuelve todo julio de 2014, `y.index.day_of_week` da el día de la semana (0 es lunes) y `y.resample("MS").mean()` agrupa por mes.
 
-Un detalle que confunde: el tablón tiene una columna `wday` que sigue la convención de la competencia M5, donde 1 es sábado. El notebook 04 no la usa; usa `day_of_week` de pandas, donde 0 es lunes y 6 es domingo. Son dos numeraciones distintas del mismo dato.
+Un detalle que confunde: el tablón tiene una columna `wday`  donde 1 es sábado. El notebook 04 no la usa; usa `day_of_week` de pandas, donde 0 es lunes y 6 es domingo. Son dos numeraciones distintas del mismo dato.
 
 ## 3. Mirar la serie antes de modelar
 
@@ -44,8 +44,6 @@ Y una rareza: los únicos dos días con cero ventas son los 25 de diciembre de 2
 
 ## 4. Las piezas de una serie
 
-Casi todo el análisis clásico parte de pensar la serie como la combinación de tres piezas:
-
 - **Tendencia**: el nivel de fondo, que cambia despacio. En esta serie es casi plana.
 - **Estacionalidad**: un patrón que se repite con un período fijo. Acá hay dos: el semanal (período 7) y el anual (período 365).
 - **Residuo**: lo que queda después de sacar las otras dos. Incluye el ruido de cada día, los eventos y las sorpresas.
@@ -58,7 +56,7 @@ La forma de elegir es medir si el tamaño del ciclo crece con el nivel. El noteb
 
 ## 5. Dos formas de descomponer
 
-Descomponer es estimar esas tres piezas a partir de la serie. El notebook usa dos métodos.
+Descomponer es estimar esas tres piezas a partir de la serie. 
 
 **Descomposición clásica** (`seasonal_decompose`). Primero estima la tendencia con una media móvil centrada de 7 días (tres días antes, el día y tres después). Después, para cada día de la semana, promedia cuánto se aparta la serie de esa tendencia: así obtiene un único número por día, igual para los tres años. Lo que sobra es el residuo. En esta serie da domingo +15,5, sábado +10,9 y miércoles −10,5 unidades respecto de la tendencia. Como la media es centrada, no se puede calcular en los tres primeros ni en los tres últimos días, y por eso la tendencia tiene 6 valores `NaN`.
 
@@ -66,7 +64,7 @@ Es fácil de entender pero tiene dos debilidades. Fuerza el mismo patrón semana
 
 **STL** (*Seasonal-Trend decomposition using Loess*). Hace el mismo trabajo con un método de suavizado local llamado *loess*, que deja que el patrón semanal cambie de a poco con el tiempo. Con `robust=True` les da menos peso a los días que se apartan mucho del resto, así que el 25 de diciembre contamina menos.
 
-Para resumir cuánto pesa cada pieza se usa una medida llamada **fuerza**, que propone el libro *Forecasting: Principles and Practice* de Hyndman y Athanasopoulos:
+Para resumir cuánto pesa cada pieza se usa una medida llamada **fuerza**
 
 ```
 fuerza = 1 − var(residuo) / var(componente + residuo)
@@ -124,6 +122,20 @@ Hay dos tests que se usan juntos porque plantean la pregunta al revés:
 - **KPSS**. Su hipótesis nula es que la serie **sí** es estacionaria. Un p-valor menor que 0,05 indica que no lo es.
 
 Si los dos coinciden, la conclusión es firme. Si se contradicen, la serie está en una zona gris y conviene mirar los gráficos antes de decidir. Ninguno de los dos detecta bien la estacionalidad, así que la diferencia estacional se decide sobre todo mirando la serie y la autocorrelación en los retardos 7, 14 y 21.
+
+El nombre "raíz unitaria", que aparece en todo lo que leas sobre ADF, describe una serie sin un nivel al que volver: cada día es el anterior más un cambio al azar, como un paseo aleatorio. El precio de una acción es el ejemplo clásico. Si un día sube, se queda arriba. Una serie estacionaria, en cambio, después de un día raro vuelve a su nivel. ADF pregunta, en el fondo, si la serie se comporta como ese paseo.
+
+### Lo que dio la serie (parte A del paso 3)
+
+La sección 3 del notebook está partida en dos. La parte A diagnostica la serie original; la parte B, todavía sin construir, la diferencia.
+
+En la serie original, ADF da un estadístico de −3,57, más negativo que el valor crítico de −2,86 al 5 %, con p = 0,006: se rechaza la raíz unitaria. KPSS da 0,419, por debajo del crítico al 5 % (0,463) pero por encima del de 10 % (0,347), con p ≈ 0,07. Al 5 % los dos dicen "estacionaria", aunque KPSS queda cerca del límite.
+
+Eso no significa que la serie esté lista para ARIMA tal como viene. La media por trimestre va de 60,3 a 83,5, y eso es la ola anual; el ciclo semanal sigue ahí entero. Los tests coinciden en que no hay tendencia ni deriva, lo que sugiere no usar la diferencia simple (d = 0 como punto de partida). La estacionalidad es otro tema, y se resuelve con la diferencia estacional (parte B) y los términos de Fourier (sección 6).
+
+Un detalle de la salida que vale la pena mirar: ADF eligió 21 retardos, justo tres semanas. El test necesita que sus residuos queden sin patrón, y para lograrlo tuvo que incorporar el ciclo semanal como retardos. Cuando un número así coincide con un múltiplo del período, rara vez es casualidad.
+
+Los tests se corren con la función `test_estacionariedad`, que se va a reutilizar en la parte B sobre las series diferenciadas. KPSS se corre con `regression="c"` (estacionaria alrededor de un nivel fijo) y no con `"ct"` (alrededor de una recta), porque la serie no tiene tendencia (DEC-010).
 
 ## 8. Autocorrelación: ACF y PACF (paso 4)
 
