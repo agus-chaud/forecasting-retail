@@ -24,6 +24,8 @@ los dos archivos.
 | DEC-008 | modelado | Descomposición aditiva (la amplitud semanal no crece con el nivel: correlación 0,11) |
 | DEC-009 | modelado | Estacionalidad anual con términos de Fourier como variables externas de SARIMAX, no con MSTL ni `s = 365` |
 | DEC-010 | modelado | Estacionariedad con ADF y KPSS juntos (KPSS alrededor de un nivel); sin diferencia simple como punto de partida (`d = 0`) |
+| DEC-011 | evaluacion | MAE a 28 días, líneas base y backtesting de 6 cortes dentro de `train`; `valid` una sola vez al final |
+| DEC-012 | modelado | En la serie de aprendizaje, los 25 de diciembre se imputan con el mismo día de la semana anterior (`y[t-7]`) |
 
 ---
 
@@ -33,9 +35,9 @@ los dos archivos.
 |---|---|
 | Tratamiento de las rachas largas de ceros (hasta 361 días) y las semanas con ventas casi nulas: dejarlas, marcarlas con una variable o excluirlas del entrenamiento | calidad-datos |
 | Confirmar con quien conozca el origen de los datos si el precio 1,00 de `FOODS_3_090` (`CA_3`) es un relleno por falta de disponibilidad o un descuento real | calidad-datos |
-| Tratamiento del 25 de diciembre (tiendas cerradas, ventas 0 en las 20 series): variable propia o filtrado | feature-engineering |
+| Tratamiento del 25 de diciembre (tiendas cerradas, ventas 0 en las 20 series): variable propia o filtrado. Ya resuelto para la serie de aprendizaje de SARIMA (DEC-012); falta para el resto de las series | feature-engineering |
 | Cómo representar la promoción de agosto-septiembre 2013 de `FOODS_3_090` (por ejemplo, precio relativo a la mediana de la serie) | feature-engineering |
-| Cuántos pares de Fourier (`K`) usar para el ciclo anual en SARIMAX: elegir en el paso 5 comparando el error en `valid` | modelado |
+| Cuántos pares de Fourier (`K`) usar para el ciclo anual en SARIMAX: elegir en el paso 5 comparando el error en el backtesting dentro de `train` (DEC-011), no en `valid` | modelado |
 
 ---
 
@@ -60,5 +62,9 @@ los dos archivos.
 **DEC-009 — Ciclo anual con Fourier.** El ciclo anual entra al modelo como pares seno/coseno (términos de Fourier) usados como variables externas de `SARIMAX`; el ciclo semanal lo modela SARIMA con `s = 7`. **Por qué:** con 2,86 años de datos, MSTL sobreajusta el ciclo anual (salta 9,8 unidades por día de media y copia los 25 de diciembre); con 2 pares de Fourier sale una curva suave de 18,5 unidades de rango que explica el 42 % de la variación lenta. Un SARIMA con `s = 365` es inviable. **Regla:** No estimar una estacionalidad día por día sin al menos 3 ciclos completos; con pocos ciclos, usar una forma suave con pocos parámetros.
 
 **DEC-010 — ADF y KPSS juntos, `d = 0` de partida.** La estacionariedad se diagnostica con los dos tests a la vez; KPSS con `regression="c"` (alrededor de un nivel). En la serie original ADF da p = 0,006 (rechaza la raíz unitaria) y KPSS p ≈ 0,07 (no rechaza la estacionariedad al 5 %), así que se parte de `d = 0`. **Por qué:** tienen hipótesis nulas opuestas; un solo test que no rechaza no prueba nada, dos que coinciden sí. No hay tendencia (medias anuales 72,8, 75,3 y 73,2), por eso `"c"` y no `"ct"`. **Regla:** Nunca decidir la diferenciación con un único test, y recordar que ninguno de los dos mide la estacionalidad: `D` se decide aparte (paso 3, parte B).
+
+**DEC-011 — Cómo se mide, fijado antes de modelar.** Horizonte de 28 días, métrica MAE (también como % de la media), dos líneas base (naive estacional `y[t-7]` y media de las últimas 4 semanas por día) y backtesting *rolling origin* con 6 cortes de 28 días dentro de `train`. Los órdenes de SARIMA y `K` de Fourier se eligen con el backtesting; `valid` se usa una sola vez, al final del paso 5. **Por qué:** `valid` son 28 días, una sola prueba; elegir órdenes mirando su error ajusta el modelo a ese mes. La mejor línea base (media de 4 semanas) comete 13,7 unidades/día (18,6 % de la media), contra 18,2 de la naive estacional: esa es la vara a superar. **Regla:** Fijar métrica, horizonte y línea base antes de ajustar cualquier modelo, y no tomar decisiones con el conjunto que se usa para la medición final.
+
+**DEC-012 — 25 de diciembre imputado en la serie de aprendizaje.** En `CA_3` / `FOODS_3_586` los dos 25 de diciembre (ventas 0, tienda cerrada) se reemplazan por el valor del mismo día de la semana anterior: 67 en 2013 y 73 en 2014 (`y_modelo`). **Por qué:** los pasos 3 y 4 usan la serie sola, sin variables externas, así que una variable indicadora recién podría entrar en el paso 5; mientras tanto esos ceros contaminan la descomposición (MSTL los copió como −59). Ni `valid` ni los cortes del backtesting incluyen un 25 de diciembre, así que la evaluación no cambia, y los tests ADF/KPSS dan casi lo mismo (ADF −3,57 en las dos versiones). **Regla:** Un cero por tienda cerrada no es demanda: tratarlo antes de modelar y pronosticar los cierres futuros con una regla (cerrado = 0), no con el modelo.
 
 ---

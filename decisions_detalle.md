@@ -183,7 +183,7 @@ La correlación entre nivel y amplitud es 0,11: prácticamente nula. El ciclo se
 
 **Área:** modelado | **Fase:** 04 SARIMA | **Fecha:** 2026-11-15 | **Estado:** Vigente
 
-**Decisión:** El ciclo semanal lo modela SARIMA con `s = 7`. El ciclo anual entra como variables externas de `SARIMAX`: pares seno/coseno del día del año (términos de Fourier, función `terminos_fourier`). La cantidad de pares `K` se elige en el paso 5 con el error en `valid`; `K = 2` es el punto de partida.
+**Decisión:** El ciclo semanal lo modela SARIMA con `s = 7`. El ciclo anual entra como variables externas de `SARIMAX`: pares seno/coseno del día del año (términos de Fourier, función `terminos_fourier`). La cantidad de pares `K` se elige en el paso 5 con el error en `valid`; `K = 2` es el punto de partida. *(Actualizado por DEC-011: `K` se elige con el backtesting dentro de `train`, no con `valid`.)*
 
 **Alternativa descartada:** (a) Estimar el ciclo anual día por día con `MSTL(periods=(7, 365))` y restarlo antes de modelar. (b) Un SARIMA con período estacional `s = 365`.
 
@@ -232,3 +232,63 @@ Los dos coinciden en que no hay tendencia ni deriva. El KPSS cerca del límite y
 
 ---
 
+## DEC-011: Métrica, horizonte, líneas base y backtesting fijados antes de modelar
+
+**Área:** evaluacion | **Fase:** 04 SARIMA (secciones 0.1 y 1.6) | **Fecha:** 2026-11-16 | **Estado:** Vigente
+
+**Decisión:** Todo modelo del notebook 04 se evalúa igual:
+- **Horizonte:** 28 días, igual que `valid` (DEC-002).
+- **Métrica:** MAE en unidades por día, también expresado como % de la media de la serie.
+- **Líneas base:** naive estacional (repetir la última semana, `y[t-7]`) y media de las últimas 4 apariciones de cada día de la semana.
+- **Backtesting *rolling origin*:** 6 cortes de 28 días dentro de `train`; el último termina el 2015-11-10.
+
+Los órdenes de SARIMA y la cantidad `K` de pares de Fourier se eligen con el MAE medio del backtesting. `valid` se usa una sola vez, al final del paso 5, con el modelo ya elegido. Funciones: `mae`, `cortes_backtest`, `naive_estacional`, `media_ultimas_semanas`, `backtest`.
+
+**Alternativa descartada:** (a) Elegir órdenes y `K` con el error en `valid` (lo que decía DEC-009 y el plan original del notebook). (b) Comparar SARIMA solo contra el modelo de boosting del curso, sin línea base simple. (c) Usar RMSE como métrica principal.
+
+**Por qué la descartamos:**
+
+| Opción | Problema |
+|---|---|
+| Elegir con `valid` | Son 28 días: una sola prueba. Probar muchas combinaciones de órdenes y quedarse con la que mejor da en ese mes ajusta el modelo a ese mes, y el error de `valid` deja de ser una medida honesta |
+| Sin línea base simple | No hay forma de saber si SARIMA aporta algo. Si no le gana a "repetir la semana pasada", su complejidad no se justifica |
+| RMSE | Penaliza mucho los días extremos y no se lee tan directo; MAE se lee como "unidades por día de error". RMSE se puede reportar al lado si hace falta |
+
+Resultados de las líneas base en los 6 cortes (2015-05-27 a 2015-11-10):
+
+| Método | MAE medio | Mínimo | Máximo | % de la media |
+|---|---|---|---|---|
+| Media de 4 semanas | 13,7 | 11,5 | 15,1 | 18,6 % |
+| Naive estacional | 18,2 | 12,4 | 24,6 | 24,7 % |
+
+La naive estacional es peor y más inestable porque copia el ruido de una sola semana; promediar 4 semanas lo suaviza. Gana en un solo corte (24-jun a 21-jul de 2015).
+
+**Conclusión:** Fijar la métrica, el horizonte y la línea base antes de ajustar cualquier modelo. Elegir hiperparámetros con varias pruebas dentro de `train` y reservar `valid` para una única medición final. La vara a superar para esta serie es 13,7 unidades por día.
+
+**Código afectado:** `03_notebooks/04_SARIMA.ipynb`, secciones 0.1 y 1.6.
+
+---
+
+## DEC-012: En la serie de aprendizaje, los 25 de diciembre se imputan con `y[t-7]`
+
+**Área:** modelado | **Fase:** 04 SARIMA (sección 2.5) | **Fecha:** 2026-11-16 | **Estado:** Vigente
+
+**Decisión:** En `CA_3` / `FOODS_3_586`, los dos 25 de diciembre (ventas 0, tienda cerrada) se reemplazan por el valor del mismo día de la semana anterior: 2013-12-25 pasa de 0 a 67 y 2014-12-25 de 0 a 73. La serie tratada se llama `y_modelo` y es la que usan los pasos 3, 4 y 5; `y` queda como la original. La función `imputar_cierres` falla si alguna de las fechas indicadas tiene ventas. Esta decisión vale solo para la serie de aprendizaje; el tratamiento para el resto de las series sigue pendiente.
+
+**Alternativa descartada:** (a) Dejar los ceros como están. (b) Una variable indicadora (*dummy*) del 25 de diciembre como variable externa del `SARIMAX`. (c) Eliminar esos días.
+
+**Por qué la descartamos:**
+
+| Opción | Problema |
+|---|---|
+| Dejar los ceros | El modelo los toma como demanda real. Ya contaminaron MSTL, que los copió como −59 unidades de "estacionalidad anual" |
+| Variable indicadora | Recién podría entrar en el paso 5 (SARIMAX); los pasos 3 y 4 trabajan con la serie sola, y los tests y la ACF quedarían contaminados mientras tanto |
+| Eliminar los días | Rompe la regla de un dato por día (`asfreq("D")`): "ayer" dejaría de ser el día anterior para el 26 de diciembre |
+
+Efecto medido: ADF −3,569 (p = 0,0064) en la original contra −3,573 (p = 0,0063) en `y_modelo`; KPSS 0,419 (p ≈ 0,069) contra 0,400 (p ≈ 0,077). La conclusión no cambia. Ni `valid` (11-nov a 8-dic) ni los cortes del backtesting incluyen un 25 de diciembre, así que la evaluación tampoco cambia.
+
+**Conclusión:** Un cero por tienda cerrada no es demanda: tratarlo antes de modelar. Para pronosticar un cierre futuro alcanza con una regla (cerrado = 0), sin pedírselo al modelo.
+
+**Código afectado:** `03_notebooks/04_SARIMA.ipynb`, sección 2.5 (función `imputar_cierres`).
+
+---
