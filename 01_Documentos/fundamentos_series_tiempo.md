@@ -217,7 +217,7 @@ La parte B lee los mismos gráficos hasta el retardo 49, mirando solo los múlti
 
 La ACF en los múltiplos de 7 vale 0,40, 0,35, 0,36, 0,36, 0,34, 0,29 y 0,33: ni se corta ni decae. Es la meseta de un ciclo fijo (sección 7), y por eso no sirve para elegir `Q`. La PACF en esos mismos retardos baja de a poco (0,24, 0,16, 0,17, 0,08, 0,11, 0,06 y 0,09) y todas las barras quedan fuera de la franja. El retardo 7 es el más fuerte, así que el punto de partida es `P = 1`; los retardos 14 y 21 también pesan, de modo que `P = 2` es una alternativa. Los retardos 6 y 8 (ACF 0,28 y 0,27) flanquean al 7: el pico semanal se reparte a los días vecinos, y se toma como parte del ciclo y no como un AR de orden 6.
 
-Juntando las dos partes, el SARIMA de partida es **(1, 0, 0)(1, 0, 0)₇**. Como la lectura no es nítida, el paso 5 compara una lista corta de 6 candidatos: el de partida, un cambio de uno en `q`, `p`, `Q` y `P` por vez, y la variante con `D = 1` (DEC-014). Un riesgo a vigilar: con una ACF que se queda en 0,3 a 0,4 durante 49 retardos, el coeficiente estacional de `P = 1` puede salir cerca de 1; si el ajuste no converge o queda inestable, la alternativa es modelar el día de la semana con variables indicadoras.
+Juntando las dos partes, el SARIMA de partida es **(1, 0, 0)(1, 0, 0)₇**. Como la lectura no es nítida, el paso 5 compara una lista corta de 6 candidatos: el de partida, un cambio de uno en `q`, `p`, `Q` y `P` por vez, y la variante con `D = 1` (DEC-014). Un riesgo a vigilar: con una ACF que se queda en 0,3 a 0,4 durante 49 retardos, el coeficiente estacional puede salir cerca de 1. En el paso 5 no pasó con `P = 1` (dio 0,32), pero sí con `Q = 1` (sección 11). Si el ajuste no converge o queda inestable, la alternativa es modelar el día de la semana con variables indicadoras.
 
 ## 9. ARIMA, SARIMA y SARIMAX (paso 5)
 
@@ -237,7 +237,7 @@ Juntando las dos partes, el SARIMA de partida es **(1, 0, 0)(1, 0, 0)₇**. Como
 
 Con varios candidatos razonables (por ejemplo, distintos p, q, P, Q, o distinta cantidad de pares de Fourier) hace falta un criterio para elegir.
 
-El **AIC** (*Akaike Information Criterion*) resume qué tan bien ajusta un modelo a `train` y le resta puntos por cada parámetro que agrega. Más bajo es mejor. Existe para evitar el sobreajuste de la sección 6: un modelo con más parámetros siempre ajusta mejor los datos que vio, y el AIC solo lo premia si la mejora compensa la complejidad. Una precaución: solo se pueden comparar AIC de modelos con el mismo orden de diferenciación (los mismos d y D), porque si cambia la diferenciación cambian los datos sobre los que se mide el ajuste. Por eso la comparación entre `D = 0` y `D = 1` (sección 7) no se hace con AIC sino con el error del backtesting (sección 11), que mide a los dos modelos sobre los mismos días.
+El **AIC** (*Akaike Information Criterion*) resume qué tan bien ajusta un modelo a `train` y le resta puntos por cada parámetro que agrega. Más bajo es mejor. Existe para evitar el sobreajuste de la sección 6: un modelo con más parámetros siempre ajusta mejor los datos que vio, y el AIC solo lo premia si la mejora compensa la complejidad. Una precaución: solo se pueden comparar AIC de modelos con el mismo orden de diferenciación (los mismos d y D), porque si cambia la diferenciación cambian los datos sobre los que se mide el ajuste. Por eso la comparación entre `D = 0` y `D = 1` (sección 7) no se hace con AIC sino con el error del backtesting (sección 11), que mide a los dos modelos sobre los mismos días. Otra señal útil: un modelo con un parámetro de más no puede tener un AIC mucho peor que el modelo más chico. Si pasa, el cálculo no encontró el óptimo y esa comparación no vale (en el paso 5 le pasó a la variante `p = 2`, con un AIC 280 puntos peor).
 
 El AIC mide el ajuste a los datos que el modelo ya vio. La decisión final entre candidatos se toma con el **MAE del backtesting**, que mide qué tan bien predicen días que no vieron (DEC-011). El AIC sirve para descartar rápido los candidatos claramente peores.
 
@@ -280,6 +280,20 @@ Estos son los resultados de las líneas base:
 | Naive estacional | 18,2 | 12,4 a 24,6 | 24,7 % |
 
 La naive estacional es peor y más inestable porque copia el ruido de una sola semana; promediar cuatro lo suaviza. La vara que tiene que superar SARIMA es entonces **13,7 unidades por día**. Los órdenes del modelo y la cantidad de pares de Fourier se eligen con estos mismos 6 cortes, y `valid` se usa una única vez, con el modelo ya elegido.
+
+### Lo que dio la serie (paso 5)
+
+**Ajuste de los 6 candidatos.** Todos convergen. El de partida da `φ` = 0,36 (ayer) y `Φ` = 0,32 (mismo día de la semana anterior), sin inestabilidad. Con `Q = 1` el AR estacional sube a 0,98 y el MA estacional queda en −0,88: se cancelan casi del todo, y el modelo se parece a uno con `D = 1`. Eso matiza la lectura de "ciclo fijo" de la sección 7: el patrón semanal parece moverse despacio.
+
+**Backtesting a 28 días (6 cortes).** Sin la ola anual, solo `Q = 1` y `D = 1` bajan de la vara de 13,7 (13,4 y 13,3), y por muy poco. Con Fourier el error baja a unos 11,7, y le gana a la media de 4 semanas en los 6 cortes. `K = 1, 2 y 3` dan casi lo mismo, así que se toma `K = 1`. `Q = 1` y `D = 1` empatan; se elige `Q = 1` por desempate (DEC-015).
+
+**Residuos del elegido.** El ciclo semanal quedó bien captado (retardos 5 a 8, 14, 21 y 28 dentro de la franja), pero el retardo 2 queda en 0,10 y Ljung-Box da p ≈ 0: con 1.030 días el test detecta autocorrelaciones chicas. El coeficiente estacional llegó al límite (0,9997).
+
+**Medición única en `valid`.** El elegido comete un MAE de 10,4, contra 9,2 de la media de 4 semanas y 10,1 de la naive estacional: **no le gana a la línea base**, al revés de lo que mostró el backtesting.
+
+**Noviembre-diciembre de 2013 y 2014.** Los 6 cortes terminan el 10-nov y no cubren esas semanas, así que se probó el modelo ahí (ventanas elegidas después de ver `valid`). El SARIMAX gana por poco (12,3 contra 13,2) y Fourier no mejora en esas semanas. `valid` fue un mes fácil para la línea base (todos los métodos erraron menos que en 2013 y 2014, y la media de 4 semanas bajó más).
+
+**Lectura.** El SARIMAX gana en el backtesting pero pierde en `valid`, y con tan pocas ventanas no se puede separar un modelo flojo de un mes con mala suerte. No se puede afirmar que supere a la línea base de forma consistente. Dos enseñanzas: un solo bloque de 28 días da una cifra muy ruidosa (sección 11), y los cortes del backtesting tienen que cubrir las épocas del año que se van a pronosticar.
 
 ## 12. SARIMA contra boosting (paso 6)
 

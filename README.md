@@ -10,10 +10,11 @@ Registro de decisiones: [`decisions.md`](decisions.md) (resumen) y [`decisions_d
 - **sábado y domingo venden +17 % y +23 % sobre el promedio**. El ciclo anual es débil (julio alto, diciembre bajo) y no hay tendencia (medias anuales de la serie estudiada: 72,8, 75,3 y 73,2).
 - **Los 25 de diciembre venden 0 en las 20 series**: estan cerrada las tiendas.
 - **La vara a superar es MAE = 13,7 unidades/día (18,6 % de la media)** a 28 días, la de la mejor línea base (media de las últimas 4 semanas) en la serie `CA_3` / `FOODS_3_586`. Repetir la semana pasada comete 18,2.
+- **El SARIMAX no supera a esa vara de forma consistente:** en el backtesting comete 11,7 (15 % menos), pero en `valid` comete 10,4 contra 9,2 de la media de 4 semanas.
 
 ## Resumen ejecutivo
 
- Se armó el tablón analítico desde la base SQLite, se limpió, se separó por fecha y se auditó la calidad serie por serie. Ahora se esta trabajando con ARIMA/SARIMA sobre una serie limpia, antes de pasar a las 20.
+ Se armó el tablón analítico desde la base SQLite, se limpió, se separó por fecha y se auditó la calidad serie por serie. Se ajustó un SARIMAX sobre una serie limpia: gana en el backtesting pero pierde en `valid` contra la línea base, así que antes de pasar a las 20 series hay que decidir cómo seguir.
 
 ## Problema
 
@@ -33,7 +34,7 @@ Predecir las ventas diarias a 28 días por producto y tienda.
 2. **Tablón analítico:** `melt` de `sales` a formato largo y `left join` con calendario y precios: una fila por producto, tienda y día.
 3. **Limpieza y split temporal** (`02_Limpieza_EDA.ipynb`): se eliminan las filas de un producto que aún no se vendía y se separa en `train`, `valid` y `reserva`.
 4. **Calidad profunda y EDA** (`03_Calidad_Datos_EDA.ipynb`): ceros, extremos, precio, patrones y ficha de alertas por cada una de las 20 series.
-5. **Modelado clásico** (`04_SARIMA.ipynb`): descomposición, estacionariedad, líneas base y backtesting sobre `CA_3` / `FOODS_3_586`.
+5. **Modelado clásico** (`04_SARIMA.ipynb`): descomposición, estacionariedad, ACF/PACF, líneas base, SARIMAX con Fourier, backtesting y medición en `valid` sobre `CA_3` / `FOODS_3_586`.
 6. **Producción** (`Producción/`): reentrenamiento y predicción con modelos por producto (ver [`explicacion.md`](Producción/instrucciones/explicacion.md)).
 7. **Documentación:** cada decisión no obvia queda en `decisions.md`.
 
@@ -61,7 +62,11 @@ En simple: la serie tiene un ritmo semanal (7 días) y uno anual (365 días). SA
 
 ### Sin diferenciar: `d = 0`, `D = 0` (DEC-010, DEC-013)
 
-Las cuatro combinaciones pasan ADF y KPSS, así que los tests no deciden. `D = 1` deja −0,45 de autocorrelación en el retardo 7 (sobrediferenciación) y sube el desvío de 17,7 a 19,3. La autocorrelación plana en múltiplos de 7 es la de un ciclo fijo, que se modela con términos estacionales.
+Las cuatro combinaciones pasan ADF y KPSS, así que los tests no deciden. `D = 1` deja −0,45 de autocorrelación en el retardo 7 (sobrediferenciación) y sube el desvío de 17,7 a 19,3. La autocorrelación plana en múltiplos de 7 es la de un ciclo fijo, que se modela con términos estacionales. En el paso 5 el modelo con `Q = 1` dejó el coeficiente estacional en 0,98 y se comportó igual que `D = 1` (empate en el backtesting): el ciclo semanal parece moverse despacio, y se mantiene `D = 0` solo por desempate.
+
+### Modelo del paso 5 y su resultado (DEC-015)
+
+Se eligió SARIMAX(1, 0, 0)(1, 0, 1)₇ con un par de términos de Fourier (`K = 1`). En el backtesting de 6 cortes comete MAE 11,7 contra 13,7 de la media de 4 semanas, y le gana en los 6. Pero en `valid`, medido una sola vez, comete 10,4 contra 9,2. En noviembre-diciembre de 2013 y 2014 la ventaja baja a 7 %. Con tan pocas ventanas no se separa un modelo flojo de un mes con mala suerte, así que no se afirma que supere a la línea base. No se retocó el modelo con el resultado de `valid`.
 
 ### Evaluación fijada antes de modelar (DEC-011)
 
@@ -77,6 +82,8 @@ Horizonte de 28 días, MAE como métrica, dos líneas base y backtesting con 6 c
 | Estacionalidad | Fin de semana +17 % / +23 % | El ciclo semanal es la señal principal |
 | Estacionariedad | ADF p = 0,006, KPSS p ≈ 0,07 | Sin tendencia: se parte de `d = 0` |
 | Línea base | MAE 13,7 (media de 4 semanas) contra 18,2 (naive estacional) | Un SARIMA debe bajar de 13,7 para justificarse |
+| SARIMAX en el backtesting | MAE 11,7 con Fourier `K = 1` (13,3 y 13,4 sin Fourier) | La ola anual es lo que más mejora; le gana a la línea base en 6 de 6 cortes |
+| SARIMAX en `valid` | MAE 10,4 contra 9,2 de la media de 4 semanas | No le gana a la línea base; en nov-dic de 2013 y 2014 la ventaja es de 7 % (DEC-015) |
 | Autocorrelación | PACF se corta tras el retardo 1 (0,43); ACF en múltiplos de 7 entre 0,29 y 0,40 | AR(1) más ciclo semanal fijo: se parte de SARIMA(1, 0, 0)(1, 0, 0)₇ y se comparan 6 candidatos (DEC-014) |
 
 ## Estructura del proyecto
@@ -133,7 +140,7 @@ python3 -m venv .venv
 ## Limitaciones y próximos pasos
 
 - **Solo una serie está modelada a fondo.** Los resultados de SARIMA valen para `CA_3` / `FOODS_3_586`, la más fácil; las series intermitentes (30-45 % de ceros) necesitan otros métodos, como Croston.
-- **Falta el paso 5 del notebook 04:** ajustar SARIMA/SARIMAX, elegir órdenes y `K` de Fourier con el backtesting y medir `valid` una sola vez. Todavía no hay un modelo que supere la línea base.
+- **El SARIMAX no supera de forma consistente la línea base** (paso 5 del notebook 04, DEC-015). `valid` ya se usó y no se retoca el modelo con él. Falta decidir cómo seguir: backtesting que cubra noviembre-diciembre y todo el año, reevaluar `p = 2` (la prueba falló por un ajuste degenerado) o usar `reserva` como nueva medición.
 - **Decisiones pendientes** (en `decisions.md`): rachas largas de ceros, el precio 1,00 de `FOODS_3_090` (¿relleno o descuento real?, no verificado), el 25 de diciembre para el resto de las series, la promoción de agosto-septiembre 2013 y un posible efecto del día del mes (SNAP).
 - **Solo 2,86 años de datos:** no alcanza para estimar bien el ciclo anual día por día.
 - **No cubre** precios futuros, promociones planificadas ni nuevos productos.

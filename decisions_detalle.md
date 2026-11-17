@@ -295,7 +295,7 @@ Efecto medido: ADF −3,569 (p = 0,0064) en la original contra −3,573 (p = 0,0
 
 ## DEC-013: Sin diferenciar (`d = 0`, `D = 0`); el ciclo semanal con términos estacionales
 
-**Área:** modelado | **Fase:** 04 SARIMA (paso 3, parte B) | **Fecha:** 2026-11-16 | **Estado:** Vigente
+**Área:** modelado | **Fase:** 04 SARIMA (paso 3, parte B) | **Fecha:** 2026-11-16 | **Estado:** Vigente, con matiz (ver la actualización y DEC-015)
 
 **Decisión:** El modelo base es un SARIMA(p, 0, q)(P, 0, Q)₇ sobre `y_modelo`: sin diferencia simple ni estacional. El ciclo semanal lo capturan los términos estacionales `P` y `Q` con `s = 7`. La misma especificación con `D = 1` se compara en el backtesting del paso 5 como alternativa. Funciones: `diferenciar`, `resumen_diferenciacion`.
 
@@ -316,6 +316,8 @@ Efecto medido: ADF −3,569 (p = 0,0064) en la original contra −3,573 (p = 0,0
 - El argumento a favor de `D = 1` es que, sin diferenciar, la autocorrelación en los múltiplos de 7 casi no baja (0,40, 0,35, 0,36, 0,36, 0,34, 0,29 y 0,33 en los retardos 7 a 49). Pero ese patrón plano es el de un ciclo **fijo**: el domingo suma unas 15,5 unidades en toda la serie (descomposición clásica, 2.2). La diferencia estacional es para un ciclo que cambia de forma al azar con el tiempo; aplicada a un ciclo fijo lo borra y deja el −0,45 en el retardo 7.
 
 **Conclusión:** Usar la menor cantidad de diferencias que deja la serie estacionaria. Cuando los tests no discriminan, decidir con la autocorrelación en el retardo diferenciado (cerca de −0,5 significa que la diferencia sobra) y con el desvío (si sube, se agregó ruido). Como la evidencia sobre `D` no es unánime, la decisión final entre `D = 0` y `D = 1` la toma el error del backtesting en el paso 5.
+
+**Actualización (2026-11-17, paso 5):** el backtesting no desempató: `Q = 1` (sin diferenciar) y `D = 1` con `(0, 1, 1)₇` dan el mismo error (MAE 13,4 y 13,3 sin Fourier; 11,7 y 11,6 con `K = 1`). Además, el ajuste de `Q = 1` dejó el AR estacional en 0,98 (0,9997 con Fourier) y el MA estacional en −0,88 (−0,986): casi se cancelan, y el modelo se comporta como uno con `D = 1`. La sobrediferenciación que se vio en el paso 3 era la de `D = 1` **sin** término MA; con `(0, 1, 1)₇` el MA la compensa. Por lo tanto el argumento de "ciclo fijo" vale a medias: el patrón semanal parece moverse despacio. Se mantiene `d = 0`, `D = 0` en el modelo elegido (DEC-015) porque el empate no justifica cambiarlo, pero `D = 1` sigue siendo una alternativa equivalente.
 
 **Código afectado:** `03_notebooks/04_SARIMA.ipynb`, sección 3, parte B (secciones 3.4 y 3.5).
 
@@ -354,6 +356,45 @@ Lo que muestran los gráficos:
 
 **Conclusión:** Usar ACF/PACF para acotar candidatos y decidir entre ellos con el backtesting. Si los residuos del modelo con `P = 1` dejan barras en los retardos 5 y 6, revisar. Si el coeficiente estacional sale cerca de 1 o el ajuste no converge, queda pendiente probar variables indicadoras del día de la semana (ver pendientes en `decisions.md`).
 
+**Resultado (2026-11-17):** los 6 candidatos convergieron. Con `P = 1` el coeficiente estacional dio 0,32 (el riesgo no se dio); con `Q = 1` subió a 0,98. El detalle de la comparación está en DEC-015.
+
 **Código afectado:** `03_notebooks/04_SARIMA.ipynb`, sección 4, partes A y B (`GRILLA_ORDENES`, `tabla_acf_pacf`, `graficar_acf_pacf`).
+
+---
+
+## DEC-015: Modelo del paso 5: SARIMAX(1, 0, 0)(1, 0, 1)₇ con Fourier `K = 1`, que no supera de forma consistente a la línea base
+
+**Área:** modelado | **Fase:** 04 SARIMA (paso 5, partes A a D) | **Fecha:** 2026-11-17 | **Estado:** Vigente
+
+**Decisión:** Se elige SARIMAX(1, 0, 0)(1, 0, 1)₇ con un par de términos de Fourier (`K = 1`) y constante, sobre `y_modelo`, ajustado con todo `train`. Es el candidato `Q = 1` de DEC-014 más la ola anual. **No se retoca con el resultado de `valid`.** Funciones: `metodo_sarima`, `resumir`, `backtest_fechas`.
+
+**Alternativa descartada:** (a) `D = 1` con `(0, 1, 1)₇`. (b) `K = 2` y `K = 3`. (c) El modelo de partida (1, 0, 0)(1, 0, 0)₇ y las variantes `q = 1`, `p = 2` y `P = 2`.
+
+**Por qué la descartamos:**
+
+Ajuste de los 6 candidatos sobre toda la serie (parte A):
+
+| Candidato | AIC | `sigma` | Coeficiente estacional |
+|---|---|---|---|
+| base | 8.645 | 15,1 | AR 0,32 |
+| `q = 1` | 8.640 | 15,1 | AR 0,34 |
+| `p = 2` | 8.640 | 15,1 | AR 0,34 |
+| `Q = 1` | 8.480 | 13,9 | AR 0,98 y MA −0,88 |
+| `P = 2` | 8.591 | 14,7 | AR 0,25 y 0,23 |
+| `D = 1` | 8.430 (no comparable) | 14,0 | MA −0,90 |
+
+Backtesting a 28 días, 6 cortes (parte B), MAE medio: media de 4 semanas 13,7; `D = 1` 13,3; `Q = 1` 13,4; `P = 2` 14,5; base, `p = 2` y `q = 1` 15,1 a 15,2; naive estacional 18,2. Con Fourier, los dos mejores bajan a 11,6 a 11,9 para `K = 1, 2 y 3`, y le ganan a la media de 4 semanas en los 6 cortes. Con Fourier `K = 1`: `D = 1` 11,6 y `Q = 1` 11,7.
+
+- **`D = 1` vs `Q = 1`:** empate, y el ajuste de `Q = 1` ya se comporta como `D = 1` (ver actualización de DEC-013). Se elige `Q = 1` por desempate, para no abandonar `d = 0`, `D = 0`.
+- **`K`:** `K = 1, 2 y 3` difieren en 0,3 como máximo, que con 6 cortes es ruido; se toma el más simple. DEC-009 hablaba de `K = 2`.
+- **Variante `p = 2`** (parte C): los residuos del elegido dejan el retardo 2 en 0,10 y Ljung-Box da p ≈ 0. La variante dio el mismo MAE (11,7), pero su ajuste cayó en un resultado degenerado (AIC 8.696 contra 8.416, `ar.S.L7` = −0,997, `ma.S.L7` = +1,000, constante 99). **No se evaluó bien** y queda pendiente.
+
+**Resultado en `valid` (medición única, parte C):** SARIMAX elegido MAE 10,4 (RMSE 13,9); media de 4 semanas 9,2 (11,4); naive estacional 10,1 (14,4). **No le gana a la línea base**, al revés del backtesting.
+
+**Noviembre-diciembre (parte D):** los 6 cortes terminan el 10-nov y no cubren esas semanas. Se probó el modelo en el 11-nov a 8-dic de 2013 y de 2014 (ventanas dentro de `train`, **elegidas después de ver `valid`**, así que `valid` ya no es una medición del todo limpia; la de 2013 tiene 314 días de historia). MAE promedio: media de 4 semanas 13,2; `Q = 1` sin Fourier 12,5; `Q = 1` con `K = 1` 12,3; `D = 1` con `K = 1` 12,3. La ventaja es del 7 %, contra 15 % en los cortes originales, y Fourier no mejora en esas semanas. En `valid` todos los métodos erraron menos que en 2013 y 2014, y la media de 4 semanas bajó más que el SARIMAX.
+
+**Conclusión:** El SARIMAX gana en 8 ventanas de backtesting (6 originales y 2 de noviembre-diciembre) pero pierde en `valid`; con tan pocas ventanas no se puede separar un modelo flojo de un mes con mala suerte. **No se puede afirmar que supere a la línea base de forma consistente.** Reglas: (1) los cortes del backtesting deben cubrir las épocas del año que se van a pronosticar; (2) si agregar un parámetro empeora mucho el AIC, el ajuste falló y la comparación no vale; (3) una vez medido `valid`, no se retoca el modelo con ese resultado.
+
+**Código afectado:** `03_notebooks/04_SARIMA.ipynb`, sección 5 (partes A a D).
 
 ---

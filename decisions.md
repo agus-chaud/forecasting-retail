@@ -26,8 +26,9 @@ los dos archivos.
 | DEC-010 | modelado | Estacionariedad con ADF y KPSS juntos (KPSS alrededor de un nivel); sin diferencia simple como punto de partida (`d = 0`) |
 | DEC-011 | evaluacion | MAE a 28 días, líneas base y backtesting de 6 cortes dentro de `train`; `valid` una sola vez al final |
 | DEC-012 | modelado | En la serie de aprendizaje, los 25 de diciembre se imputan con el mismo día de la semana anterior (`y[t-7]`) |
-| DEC-013 | modelado | Sin diferenciar: `d = 0` y `D = 0`; el ciclo semanal (fijo) se modela con términos estacionales `P`, `Q` (`s = 7`); `D = 1` solo como alternativa en el backtesting |
+| DEC-013 | modelado | Sin diferenciar: `d = 0` y `D = 0`; el ciclo semanal (fijo) se modela con términos estacionales `P`, `Q` (`s = 7`); `D = 1` solo como alternativa en el backtesting (en el paso 5 empató con `Q = 1`, que ya se comporta como `D = 1`; ver DEC-015) |
 | DEC-014 | modelado | Órdenes leídos de ACF/PACF: partida SARIMA(1, 0, 0)(1, 0, 0)₇ y lista corta de 6 candidatos a comparar en el backtesting, sin elegir uno a ojo ni probar todo |
+| DEC-015 | modelado | Modelo del paso 5: SARIMAX(1, 0, 0)(1, 0, 1)₇ con Fourier `K = 1`; gana en el backtesting (MAE 11,7 contra 13,7) pero pierde en `valid` (10,4 contra 9,2): no supera de forma consistente a la línea base |
 
 ---
 
@@ -40,8 +41,9 @@ los dos archivos.
 | Tratamiento del 25 de diciembre (tiendas cerradas, ventas 0 en las 20 series): variable propia o filtrado. Ya resuelto para la serie de aprendizaje de SARIMA (DEC-012); falta para el resto de las series | feature-engineering |
 | Cómo representar la promoción de agosto-septiembre 2013 de `FOODS_3_090` (por ejemplo, precio relativo a la mediana de la serie) | feature-engineering |
 | Probar un efecto de día del mes como variable externa del SARIMAX (por ejemplo, primera o segunda mitad del mes, o Fourier del día del mes). Mirada rápida en `CA_3` / `FOODS_3_586`: los días 1 a 13 venden entre 1 % y 10 % más que la media y los días 22 a 31 entre 0 % y 14 % menos (posible efecto del cobro o de la ayuda alimentaria SNAP, columna `snap_CA` que el tablón no tiene). Sin test todavía; se conserva solo si baja el error del backtesting | modelado |
-| Si el SARIMA con `P = 1` sale inestable o no converge (la ACF estacional se queda en 0,3 a 0,4 durante 49 retardos), probar variables indicadoras del día de la semana en vez de términos estacionales | modelado |
-| Cuántos pares de Fourier (`K`) usar para el ciclo anual en SARIMAX: elegir en el paso 5 comparando el error en el backtesting dentro de `train` (DEC-011), no en `valid` | modelado |
+| El coeficiente estacional del modelo elegido quedó pegado a 1 (0,9997, DEC-015): probar variables indicadoras del día de la semana en vez de términos estacionales, o dejar `D = 1` con `(0, 1, 1)₇` | modelado |
+| Reevaluar `p = 2` (los residuos dejan el retardo 2 en 0,10): la prueba del paso 5 cayó en un ajuste degenerado y hay que repetirla con valores iniciales de la solución de `p = 1` | modelado |
+| Cómo seguir mejorando el SARIMAX sin un `valid` limpio: cortes de backtesting que cubran noviembre-diciembre y todo el año, o usar `reserva` (23 días) como nueva medición | evaluacion |
 
 ---
 
@@ -74,5 +76,7 @@ los dos archivos.
 **DEC-013 — Sin diferenciar (`d = 0`, `D = 0`).** El SARIMA base es (p, 0, q)(P, 0, Q)₇ sobre `y_modelo`; la variante con `D = 1` se compara en el backtesting del paso 5. **Por qué:** las cuatro combinaciones pasan ADF y KPSS, así que los tests no deciden. `d = 1` deja −0,29 en el retardo 1 y sube el desvío de 17,7 a 18,8; `D = 1` deja −0,45 en el retardo 7 (huella de sobrediferenciación) y sube el desvío a 19,3. La fuerza estacional semanal es 0,46, por debajo del umbral de 0,64 para `D = 1`. La autocorrelación plana en los múltiplos de 7 (0,40 a 0,33) es la de un ciclo fijo, que se modela con términos estacionales y no se resta. **Regla:** Usar la menor cantidad de diferencias que deja la serie estacionaria; cuando los tests no discriminan, decidir con la autocorrelación en el retardo diferenciado (−0,5 = sobra) y con el desvío.
 
 **DEC-014 — Lista corta de candidatos leída de ACF/PACF.** El paso 5 compara el modelo de partida SARIMA(1, 0, 0)(1, 0, 0)₇ y cinco variantes: `q = 1`, `p = 2`, `Q = 1`, `P = 2` y `D = 1` con (0, 1, 1)₇. **Por qué:** en los retardos cortos la PACF se corta después del 1 (0,43; luego 0,01, −0,05 y 0,00) y la ACF decae (0,43, 0,20, 0,05): AR(1). En los múltiplos de 7 la ACF no se corta ni decae (0,40 a 0,33) y la PACF baja de a poco (0,24, 0,16, 0,17): la lectura no da un único modelo. **Regla:** Usar ACF/PACF para acotar candidatos y elegir entre ellos con el backtesting, no al revés.
+
+**DEC-015 — Modelo del paso 5 y resultado.** Se elige SARIMAX(1, 0, 0)(1, 0, 1)₇ con constante y Fourier `K = 1`, ajustado con todo `train`. **Por qué:** en el backtesting de 6 cortes, `Q = 1` y `D = 1` empatan (13,4 y 13,3 sin Fourier; 11,7 y 11,6 con `K = 1`) y le ganan a la media de 4 semanas (13,7) solo con la ola anual; `K = 1, 2 y 3` dan casi lo mismo y se toma el más simple. Pero en `valid` (medición única) el elegido comete 10,4 contra 9,2 de la media de 4 semanas, y en noviembre-diciembre de 2013 y 2014 la ventaja es de solo 7 % (12,3 contra 13,2). El coeficiente estacional quedó en 0,9997: el modelo se comporta como uno con `D = 1`, lo que matiza DEC-013. **Regla:** Los cortes del backtesting deben cubrir las épocas del año que se pronostican; no afirmar que un modelo supera a la línea base si pierde en la medición final; y no retocar el modelo con el resultado de `valid`.
 
 ---
