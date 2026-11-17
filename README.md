@@ -57,6 +57,8 @@ ARIMA/SARIMA son univariados y suponen una serie continua alrededor de un nivel.
 
 Con 2,86 años de datos, MSTL sobreajusta el ciclo anual: salta 9,8 unidades por día y copia los 25 de diciembre. Con 2 pares de Fourier sale una curva suave de 18,5 unidades de rango que explica el 42 % de la variación lenta. Un SARIMA con `s = 365` es inviable.
 
+En simple: la serie tiene un ritmo semanal (7 días) y uno anual (365 días). SARIMA aprende un ritmo mirando "qué pasó hace `s` días"; con `s = 365` haría falta mucha más historia (cada día del calendario aparece solo 2 o 3 veces) y el modelo sería muy lento. Por eso SARIMA se queda con el ciclo semanal. Para el anual se usan términos de Fourier: unas pocas ondas seno/coseno que dibujan una curva suave con 4 números en vez de 365, y que entran a `SARIMAX` como variables externas.
+
 ### Sin diferenciar: `d = 0`, `D = 0` (DEC-010, DEC-013)
 
 Las cuatro combinaciones pasan ADF y KPSS, así que los tests no deciden. `D = 1` deja −0,45 de autocorrelación en el retardo 7 (sobrediferenciación) y sube el desvío de 17,7 a 19,3. La autocorrelación plana en múltiplos de 7 es la de un ciclo fijo, que se modela con términos estacionales.

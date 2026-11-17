@@ -79,6 +79,12 @@ Hay un detalle del gráfico de STL que conviene notar. Como solo le dijimos que 
 
 ## 6. Sobreajuste y términos de Fourier
 
+Antes del detalle, la idea en simple. La serie tiene dos ritmos que se repiten: uno **semanal** (los sábados se vende más que los martes, ciclo de 7 días) y uno **anual** (diciembre vende más que marzo, ciclo de 365 días). Cada ritmo se modela con una herramienta distinta, y la razón está en los dos puntos siguientes.
+
+**Por qué SARIMA no puede con el ritmo anual.** SARIMA aprende un ritmo mirando "qué pasó hace `s` días". Con `s = 7` mira una semana atrás, y alcanza con los datos de unas pocas semanas. Con `s = 365` tiene que mirar un año atrás, y acá hay solo 2,86 años: cada día del calendario aparece 2 o 3 veces, muy pocas para distinguir un patrón del ruido. Además el modelo se vuelve muy pesado: ajustarlo tarda mucho y con datos diarios muchas veces ni converge (sección 9). Por eso a SARIMA se le deja solo el ciclo semanal.
+
+**Por qué Fourier es la forma barata de describir el ciclo anual.** La ola anual ("poco en invierno, mucho en verano") es una curva larga y suave. Una curva así se puede dibujar sumando unas pocas ondas seno y coseno; esas ondas son los términos de Fourier. En vez de estimar 365 valores, uno por día, se le entregan al modelo 4 o 6 columnas nuevas y estima un peso para cada una. La curva queda suave por construcción, no puede saltar de un día al otro, y describe todo el año con muy pocos números. Esas columnas entran en `SARIMAX` como variables externas (la X). La división de trabajo queda así: Fourier cubre el ciclo anual, SARIMA con `s = 7` cubre el ciclo semanal y la dependencia entre días cercanos.
+
 Para separar también la ola anual probamos `MSTL`, que acepta varios períodos a la vez: le pedimos 7 y 365. El resultado fue malo.
 
 Una estacionalidad anual real debería ser una curva suave: las ventas suben en verano y bajan en invierno sin saltar de un día al otro. La componente anual que devolvió MSTL salta en promedio 9,8 unidades entre días consecutivos, y sus valores más extremos son días sueltos: los dos 25 de diciembre (cerca de −59) y el 4 de julio de 2013 (+52).
