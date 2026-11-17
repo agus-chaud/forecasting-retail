@@ -197,6 +197,22 @@ Estos gráficos se usan para elegir los órdenes del modelo (las letras de la se
 
 Con datos reales los gráficos casi nunca son tan limpios como en los libros. Sirven para elegir un punto de partida razonable y un par de alternativas cercanas, que después se comparan con un criterio objetivo (sección 10). Se leen sobre la serie en la forma en que se va a modelar: si necesitó diferencias, sobre la diferenciada, porque una serie no estacionaria tiene una ACF que decae muy lento y tapa todo lo demás. En esta serie no hizo falta diferenciar (sección 7), así que se leen sobre `y_modelo` tal cual. Las barras altas en 7, 14, 21… que no bajan son el ciclo semanal fijo, y apuntan a términos estacionales `P` o `Q`.
 
+### Lo que dio la serie (parte A del paso 4)
+
+La parte A lee solo los retardos cortos, 1 a 4, para elegir la parte no estacional del modelo (`p` y `q`). Los retardos desde el 5 se dejan para la parte B, porque ahí ya empieza a notarse el ciclo semanal.
+
+La PACF vale 0,43 en el retardo 1 y 0,01, −0,05 y 0,00 en los retardos 2, 3 y 4, todos dentro de la franja (±0,06): se corta de golpe después del primero. La ACF decae de a poco: 0,43, 0,20, 0,05 y 0,00. Las dos formas juntas son la lectura de un **AR(1)**. Un AR(1) puro daría 0,43² = 0,19 en el retardo 2 de la ACF, y la observada es 0,20, muy cerca.
+
+El punto de partida es entonces `p = 1` y `q = 0`. Como la ACF decae en vez de cortarse, no hay señal de un componente MA. Las alternativas cercanas para comparar en el paso 5 son `p = 1, q = 1` y `p = 2`. Los retardos 5 y 6 también salen de la franja (ACF 0,09 y 0,28), pero son el comienzo del ciclo semanal, que llega a 0,40 en el retardo 7; esa lectura es la parte B.
+
+### Lo que dio la serie (parte B del paso 4)
+
+La parte B lee los mismos gráficos hasta el retardo 49, mirando solo los múltiplos de 7 para elegir `P` y `Q`.
+
+La ACF en los múltiplos de 7 vale 0,40, 0,35, 0,36, 0,36, 0,34, 0,29 y 0,33: ni se corta ni decae. Es la meseta de un ciclo fijo (sección 7), y por eso no sirve para elegir `Q`. La PACF en esos mismos retardos baja de a poco (0,24, 0,16, 0,17, 0,08, 0,11, 0,06 y 0,09) y todas las barras quedan fuera de la franja. El retardo 7 es el más fuerte, así que el punto de partida es `P = 1`; los retardos 14 y 21 también pesan, de modo que `P = 2` es una alternativa. Los retardos 6 y 8 (ACF 0,28 y 0,27) flanquean al 7: el pico semanal se reparte a los días vecinos, y se toma como parte del ciclo y no como un AR de orden 6.
+
+Juntando las dos partes, el SARIMA de partida es **(1, 0, 0)(1, 0, 0)₇**. Como la lectura no es nítida, el paso 5 compara una lista corta de 6 candidatos: el de partida, un cambio de uno en `q`, `p`, `Q` y `P` por vez, y la variante con `D = 1` (DEC-014). Un riesgo a vigilar: con una ACF que se queda en 0,3 a 0,4 durante 49 retardos, el coeficiente estacional de `P = 1` puede salir cerca de 1; si el ajuste no converge o queda inestable, la alternativa es modelar el día de la semana con variables indicadoras.
+
 ## 9. ARIMA, SARIMA y SARIMAX (paso 5)
 
 **ARIMA(p, d, q)** combina tres ideas, una por letra:
@@ -205,7 +221,7 @@ Con datos reales los gráficos casi nunca son tan limpios como en los libros. Si
 - **I(d)**, integrado: la serie se diferencia *d* veces antes de aplicar lo demás (sección 7). El modelo después deshace la diferencia para devolver las predicciones en unidades vendidas.
 - **MA(q)**, media móvil: el valor de hoy también depende de los errores que cometió el modelo en los *q* días anteriores. Si ayer el modelo predijo 70 y se vendieron 80, ese error de +10 puede ajustar la predicción de hoy. No tiene nada que ver con la media móvil de la sección 3, aunque se llame igual; es una coincidencia de nombres que confunde a todo el mundo.
 
-**SARIMA(p, d, q)(P, D, Q)s** agrega la misma estructura en los retardos estacionales. Con s = 7, P = 1 significa "el valor de hoy depende del valor de hace 7 días", D = 1 es la diferencia estacional `y[t] − y[t−7]` y Q = 1 usa el error de hace 7 días. Con lo que dio el paso 3 (`d = 0`, `D = 0`), un ejemplo de especificación para esta serie podría ser SARIMA(1, 0, 1)(1, 0, 1)7: ahí el ciclo semanal lo capturan `P = 1` y `Q = 1`, sin diferencia estacional. Los valores concretos de `p`, `q`, `P` y `Q` se eligen en el paso 4.
+**SARIMA(p, d, q)(P, D, Q)s** agrega la misma estructura en los retardos estacionales. Con s = 7, P = 1 significa "el valor de hoy depende del valor de hace 7 días", D = 1 es la diferencia estacional `y[t] − y[t−7]` y Q = 1 usa el error de hace 7 días. Con lo que dio el paso 3 (`d = 0`, `D = 0`), un ejemplo de especificación para esta serie podría ser SARIMA(1, 0, 1)(1, 0, 1)7: ahí el ciclo semanal lo capturan `P = 1` y `Q = 1`, sin diferencia estacional. Los valores concretos de `p`, `q`, `P` y `Q` se leen en el paso 4 (sección 8); para esta serie el paso 4 dejó como punto de partida SARIMA(1, 0, 0)(1, 0, 0)₇ y una lista corta de candidatos para comparar.
 
 **SARIMAX** agrega la X: variables externas que no salen de la propia serie. Acá son los términos de Fourier de la sección 6, y quizás un efecto de día del mes si se confirma (sección 3). En `statsmodels` el modelo funciona como una regresión lineal sobre esas variables, donde el error de la regresión, en vez de ser ruido independiente, sigue un SARIMA. La regresión captura la ola anual y el SARIMA captura el ciclo semanal y la dependencia entre días cercanos.
 
