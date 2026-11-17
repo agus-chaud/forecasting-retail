@@ -238,11 +238,11 @@ Los dos coinciden en que no hay tendencia ni deriva. El KPSS cerca del límite y
 
 **Decisión:** Todo modelo del notebook 04 se evalúa igual:
 - **Horizonte:** 28 días, igual que `valid` (DEC-002).
-- **Métrica:** MAE en unidades por día, también expresado como % de la media de la serie.
+- **Métrica:** MAE en unidades por día, también expresado como % de la media de la serie. **Métrica secundaria:** RMSE, solo como diagnóstico (el cociente RMSE/MAE indica si hay pocos errores muy grandes); no decide qué modelo gana.
 - **Líneas base:** naive estacional (repetir la última semana, `y[t-7]`) y media de las últimas 4 apariciones de cada día de la semana.
 - **Backtesting *rolling origin*:** 6 cortes de 28 días dentro de `train`; el último termina el 2015-11-10.
 
-Los órdenes de SARIMA y la cantidad `K` de pares de Fourier se eligen con el MAE medio del backtesting. `valid` se usa una sola vez, al final del paso 5, con el modelo ya elegido. Funciones: `mae`, `cortes_backtest`, `naive_estacional`, `media_ultimas_semanas`, `backtest`.
+Los órdenes de SARIMA y la cantidad `K` de pares de Fourier se eligen con el MAE medio del backtesting. `valid` se usa una sola vez, al final del paso 5, con el modelo ya elegido. Funciones: `mae`, `rmse`, `cortes_backtest`, `naive_estacional`, `media_ultimas_semanas`, `backtest`.
 
 **Alternativa descartada:** (a) Elegir órdenes y `K` con el error en `valid` (lo que decía DEC-009 y el plan original del notebook). (b) Comparar SARIMA solo contra el modelo de boosting del curso, sin línea base simple. (c) Usar RMSE como métrica principal.
 
@@ -252,14 +252,14 @@ Los órdenes de SARIMA y la cantidad `K` de pares de Fourier se eligen con el MA
 |---|---|
 | Elegir con `valid` | Son 28 días: una sola prueba. Probar muchas combinaciones de órdenes y quedarse con la que mejor da en ese mes ajusta el modelo a ese mes, y el error de `valid` deja de ser una medida honesta |
 | Sin línea base simple | No hay forma de saber si SARIMA aporta algo. Si no le gana a "repetir la semana pasada", su complejidad no se justifica |
-| RMSE | Penaliza mucho los días extremos y no se lee tan directo; MAE se lee como "unidades por día de error". RMSE se puede reportar al lado si hace falta |
+| RMSE como principal | Penaliza mucho los días extremos y no se lee tan directo; MAE se lee como "unidades por día de error". Se reporta al lado como métrica secundaria (diagnóstico, no decide) |
 
 Resultados de las líneas base en los 6 cortes (2015-05-27 a 2015-11-10):
 
-| Método | MAE medio | Mínimo | Máximo | % de la media |
-|---|---|---|---|---|
-| Media de 4 semanas | 13,7 | 11,5 | 15,1 | 18,6 % |
-| Naive estacional | 18,2 | 12,4 | 24,6 | 24,7 % |
+| Método | MAE medio | Mínimo | Máximo | % de la media | RMSE medio | RMSE/MAE |
+|---|---|---|---|---|---|---|
+| Media de 4 semanas | 13,7 | 11,5 | 15,1 | 18,6 % | 17,5 | 1,28 |
+| Naive estacional | 18,2 | 12,4 | 24,6 | 24,7 % | 23,0 | 1,26 |
 
 La naive estacional es peor y más inestable porque copia el ruido de una sola semana; promediar 4 semanas lo suaviza. Gana en un solo corte (24-jun a 21-jul de 2015).
 
