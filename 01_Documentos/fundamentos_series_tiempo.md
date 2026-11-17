@@ -1,40 +1,39 @@
 # Fundamentos de series de tiempo para el notebook 04
 
-Este documento acompaña a [`04_SARIMA.ipynb`](../03_notebooks/04_SARIMA.ipynb). La idea es que, al leer una celda, puedas saber qué problema resuelve y por qué está escrita así y no de otra forma. 
+Este documento busca explicar qué problema resuelve y por qué está escrita así cada cosa. 
 
-Los ejemplos usan siempre la misma serie, `CA_3` / `FOODS_3_586`: las ventas diarias de un producto de comida en una tienda de California, del 2013-01-01 al 2015-11-10. Los números salen del notebook. Las secciones 1 a 7 explican lo que ya está construido (pasos 1 a 3). De la sección 11 ya existe una parte: las líneas base y el backtesting, que se fijaron antes de modelar. El resto, de la 8 en adelante, explica lo que todavía falta construir, así que se va a revisar cuando exista el código.
-
+Los ejemplos usan siempre la misma serie, `CA_3` / `FOODS_3_586`: las ventas diarias de un producto de comida en una tienda de California, del 2013-01-01 al 2015-11-10.
 ---
 
 ## 1. Qué cambia cuando los datos tienen fecha
 
 En un problema tabular típico (predecir si un cliente compra, por ejemplo) cada fila es un caso independiente. Podés mezclar las filas, partir al azar en train y test, y el modelo no se entera.
 
-En una serie de tiempo lo que pasó ayer dice algo sobre lo que pasa hoy. Esta serie vendió 73,8 unidades por día en promedio, pero si sabés que hoy es domingo y que el domingo pasado se vendieron 95, tu estimación cambia bastante. Esa dependencia entre días cercanos es justamente lo que vamos a modelar, y tiene dos consecuencias prácticas.
+En una serie de tiempo:
 
 **No se parte al azar.** El split es por fecha: todo `train` es anterior a todo `valid` (DEC-002).
 
-**La validación imita el uso real.** En producción vas a tener la historia hasta hoy y vas a tener que predecir los próximos días. El split reproduce eso: `train` hasta el 2015-11-10, `valid` los 28 días siguientes y `reserva` los 23 días posteriores, que no se tocan hasta el final. `valid` tiene 28 días porque son exactamente 4 semanas.
+ **En producción vas a tener la historia hasta hoy y vas a tener que predecir los próximos días**. por eso se arma `train` hasta el 2015-11-10, `valid` los 28 días siguientes y `reserva` los 23 días posteriores, que no se tocan hasta el final. `valid` tiene 28 días porque son exactamente 4 semanas.
 
-Una tercera regla, menos obvia: cualquier número que se calcule a partir de los datos (un umbral, una media para imputar, los parámetros del modelo) se calcula solo con `train`. Si usás `valid` para decidir algo, deja de ser una prueba honesta. Por eso los órdenes del modelo se eligen con varias pruebas dentro de `train` (backtesting, sección 11) y `valid` se usa una sola vez, al final (DEC-011).
+ **cualquier número que se calcule a partir de los datos (umbral,  media para imputar, parámetros del modelo) se calcula solo con `train`**. Si usás `valid` para decidir algo, deja de ser una prueba honesta. 
 
 ## 2. Cómo se representa una serie en pandas
 
 Para `statsmodels`, la librería donde viven ARIMA y SARIMA, una serie es una `pd.Series` cuyo índice son fechas y que tiene una frecuencia declarada. La función `extraer_serie` del notebook hace exactamente eso: filtra una tienda y un producto, pone la fecha como índice y llama a `.asfreq("D")`.
 
-`.asfreq("D")` le dice a pandas "tiene que haber un dato por día". Si falta una fecha, la agrega con `NaN`. Parece un detalle, pero es una protección importante. Todos los modelos de este notebook trabajan con la idea de "el dato anterior", y asumen que el dato anterior es el día anterior. Si faltara el 3 de marzo, para el modelo el 2 de marzo pasaría a ser "ayer" del 4 de marzo, y todo lo que aprenda sobre la relación entre días consecutivos quedaría mal. Por eso la función falla si encuentra huecos en vez de seguir de largo. Esta serie tiene los 1.044 días completos, pero la función está pensada para cuando lleguen datos nuevos.
+`.asfreq("D")` le dice a pandas "tiene que haber un dato por día". Si falta una fecha, la agrega con `NaN`. Parece un detalle, pero es una protección importante. Todos los modelos de este notebook trabajan con la idea de "el dato anterior", y asumen que el dato anterior es el día anterior. Si faltara el 3 de marzo, para el modelo el 2 de marzo pasaría a ser "ayer" del 4 de marzo, y todo lo que aprenda sobre la relación entre días consecutivos quedaría mal. Por eso la función falla si encuentra huecos en vez de seguir de largo. **Esta serie tiene los 1.044 días completos, pero la función está pensada para cuando lleguen datos nuevos**.
 
 El índice de fechas también te da herramientas cómodas: `y["2014-07"]` devuelve todo julio de 2014, `y.index.day_of_week` da el día de la semana (0 es lunes) y `y.resample("MS").mean()` agrupa por mes.
 
-Un detalle que confunde: el tablón tiene una columna `wday` donde 1 es sábado. El notebook 04 no la usa; usa `day_of_week` de pandas, donde 0 es lunes y 6 es domingo. Son dos numeraciones distintas del mismo dato.
+ El notebook 04 usa `day_of_week` de pandas, donde 0 es lunes y 6 es domingo.
 
 ## 3. Mirar la serie antes de modelar
 
-El primer paso con cualquier serie es graficarla entera. No hay atajo para esto. Con tres años de datos diarios el gráfico se ve como una franja gris temblorosa, y por eso se le superponen **medias móviles**.
+El primer paso con cualquier serie es graficarla entera. Con tres años de datos diarios el gráfico se ve como una franja gris temblorosa, y por eso se le superponen **medias móviles**.
 
-Una media móvil de 7 días es, para cada fecha, el promedio de ese día y los seis anteriores (`y.rolling(7).mean()`). Tiene una propiedad muy útil acá: cualquier ventana de 7 días consecutivos contiene exactamente un lunes, un martes, un miércoles y así hasta el domingo. El efecto del fin de semana entra una vez en cada promedio y se cancela. Lo que queda es el movimiento de fondo. La media de 28 días suaviza todavía más y deja ver la forma del año.
+**Una media móvil de 7 días es, para cada fecha, el promedio de ese día y los seis anteriores** (`y.rolling(7).mean()`). Tiene una propiedad muy útil acá: cualquier ventana de 7 días consecutivos contiene exactamente un lunes, un martes, un miércoles y así hasta el domingo. El efecto del fin de semana entra una vez en cada promedio y se cancela. Lo que queda es el movimiento de fondo. **La media de 28 días suaviza todavía más y deja ver la forma del año**.
 
-En esta serie el gráfico muestra tres cosas, que después los números confirmaron:
+En esta serie el gráfico muestra tres cosas
 
 - Un ciclo semanal muy marcado. El domingo se venden en promedio 89,5 unidades y el miércoles 63,2: unas 26 unidades de diferencia sobre una media de 73,8.
 - Una ola anual. Juntando los tres años, agosto promedia 87,4 y enero 62,3.
@@ -80,11 +79,11 @@ Hay un detalle del gráfico de STL que conviene notar. Como solo le dijimos que 
 
 ## 6. Sobreajuste y términos de Fourier
 
-Para separar también la ola anual probamos `MSTL`, que acepta varios períodos a la vez: le pedimos 7 y 365. El resultado fue malo, y entender por qué es probablemente lo más útil de este paso.
+Para separar también la ola anual probamos `MSTL`, que acepta varios períodos a la vez: le pedimos 7 y 365. El resultado fue malo.
 
 Una estacionalidad anual real debería ser una curva suave: las ventas suben en verano y bajan en invierno sin saltar de un día al otro. La componente anual que devolvió MSTL salta en promedio 9,8 unidades entre días consecutivos, y sus valores más extremos son días sueltos: los dos 25 de diciembre (cerca de −59) y el 4 de julio de 2013 (+52).
 
-La causa es la cantidad de datos. Para estimar "cuánto vende esta serie un 25 de diciembre en comparación con el resto del año", MSTL solo tiene dos 25 de diciembre (los datos cubren 2,86 años). Con dos observaciones, la mejor estimación posible es copiar lo que pasó esos dos días. Eso es **sobreajuste**: el método memoriza el ruido de los datos que vio en vez de aprender un patrón que se repita. En ML tabular lo conocés como un árbol de decisión sin límite de profundidad que termina con una hoja por fila. Acá es lo mismo con otra forma.
+La causa es la cantidad de datos. Para estimar "cuánto vende esta serie un 25 de diciembre en comparación con el resto del año", MSTL solo tiene dos 25 de diciembre (los datos cubren 2,86 años). Con dos observaciones, la mejor estimación posible es copiar lo que pasó esos dos días. Eso es **sobreajuste**: el método memoriza el ruido de los datos que vio en vez de aprender un patrón que se repita. 
 
 La solución es restringir la forma que puede tener la curva anual. Los **términos de Fourier** hacen eso. En lugar de estimar 365 valores (uno por día del año), se describen con unas pocas ondas seno y coseno que completan un ciclo por año. La función `terminos_fourier` crea, para cada fecha, columnas como estas:
 
@@ -105,7 +104,7 @@ Por qué no usar directamente un SARIMA con período 365 se explica en la secci�
 
 ARIMA aprende relaciones del tipo "el valor de hoy se parece en tal proporción al de ayer". Para que tenga sentido aprender una proporción así con los datos de 2013 y usarla en 2015, esa relación tiene que ser la misma en todo el período. Esa propiedad se llama **estacionariedad**.
 
-Una serie es estacionaria (en el sentido que nos importa) cuando su media, su varianza y la relación entre un día y los anteriores no cambian con el tiempo. Una serie con tendencia no lo es, porque su media va subiendo. Una serie con estacionalidad tampoco, porque la media del domingo es distinta de la del miércoles: la media depende de qué día mires.
+Una serie es estacionaria cuando su media, su varianza y la relación entre un día y los anteriores no cambian con el tiempo. Una serie con tendencia no lo es, porque su media va subiendo. Una serie con estacionalidad tampoco, porque la media del domingo es distinta de la del miércoles: la media depende de qué día mires.
 
 ### Diferenciar
 
@@ -115,6 +114,8 @@ La forma estándar de volver estacionaria una serie es **diferenciarla**: en vez
 - **Diferencia estacional**: `y[t] − y[t−7]`, el cambio respecto del mismo día de la semana anterior. Elimina el ciclo semanal, porque compara domingo contra domingo. En pandas, `y.diff(7)`.
 
 Cuántas veces se diferencia es una decisión, y el exceso también es un problema (**sobrediferenciación**). Si diferenciás una serie que no lo necesitaba, le agregás ruido y una correlación negativa artificial. La huella típica es una autocorrelación (sección 8) cerca de −0,5 **en el retardo que diferenciaste**: en el 1 si sobra la diferencia simple, en el 7 si sobra la estacional. La otra señal es que el desvío de la serie sube en vez de bajar. Por lo general se termina con una diferencia simple, una estacional o ninguna, y casi nunca con más de dos en total.
+
+**Por qué diferenciar de más sube el desvío y deja −0,5.** Cada día es patrón más ruido. Si el patrón es fijo, restar el día de hace 7 lo cancela, pero el ruido no se cancela: `y[t] − y[t−7] = ruido[t] − ruido[t−7]`. Cada valor arrastra ahora dos ruidos en vez de uno, y con ruidos independientes el desvío del ruido se multiplica por √2 ≈ 1,41. Además, la diferencia de hoy (`ruido[t] − ruido[t−7]`) y la de dentro de 7 días (`ruido[t+7] − ruido[t]`) comparten `ruido[t]` con signo opuesto, lo que fuerza una correlación de −0,5. Son valores teóricos: con datos reales el desvío sube menos, porque cancelar el patrón también le saca variación.
 
 Antes de mirar los datos, lo esperable para esta serie era que la diferencia estacional de 7 fuera necesaria (el ciclo semanal es fuerte) y que la simple no (no hay tendencia). La parte B mostró que **ninguna de las dos hace falta**. El motivo está en la diferencia entre dos tipos de estacionalidad:
 
@@ -127,10 +128,17 @@ Si aplicás la diferencia estacional a un patrón fijo, borrás algo que el mode
 
 Hay dos tests que se usan juntos porque plantean la pregunta al revés:
 
-- **ADF** (*Augmented Dickey-Fuller*). Su hipótesis nula es que la serie **no** es estacionaria. Un p-valor menor que 0,05 permite rechazarla y concluir que la serie es estacionaria.
-- **KPSS**. Su hipótesis nula es que la serie **sí** es estacionaria. Un p-valor menor que 0,05 indica que no lo es.
+- **ADF** (*Augmented Dickey-Fuller*). Su hipótesis nula es que la serie **no** es estacionaria. Un p-valor menor que 0,05 permite rechazarla y concluir que la serie es estacionaria. El estadístico se compara con un valor crítico: cuanto **más negativo** que el crítico, más evidencia de estacionariedad.
+- **KPSS**. Su hipótesis nula es que la serie **sí** es estacionaria. Un p-valor menor que 0,05 indica que no lo es. Acá la dirección es la contraria: cuanto **más alto** el estadístico respecto del crítico, más evidencia en contra de la estacionariedad.
 
-Si los dos coinciden, la conclusión es firme. Si se contradicen, la serie está en una zona gris y conviene mirar los gráficos antes de decidir. Ninguno de los dos detecta bien la estacionalidad, así que la diferencia estacional se decide sobre todo mirando la serie y la autocorrelación en los retardos 7, 14 y 21.
+Si los dos coinciden, la conclusión es firme. Si se contradicen, la serie está en una zona gris y conviene mirar los gráficos antes de decidir.
+
+| ADF (p < 0,05) | KPSS (p < 0,05) | Conclusión |
+|---|---|---|
+| Sí | No | Estacionaria (firme) |
+| No | Sí | No estacionaria (firme) |
+| Sí | Sí | Zona gris: mirar gráficos |
+| No | No | Zona gris: mirar gráficos | Ninguno de los dos detecta bien la estacionalidad, así que la diferencia estacional se decide sobre todo mirando la serie y la autocorrelación en los retardos 7, 14 y 21.
 
 El nombre "raíz unitaria", que aparece en todo lo que leas sobre ADF, describe una serie sin un nivel al que volver: cada día es el anterior más un cambio al azar, como un paseo aleatorio. El precio de una acción es el ejemplo clásico. Si un día sube, se queda arriba. Una serie estacionaria, en cambio, después de un día raro vuelve a su nivel. ADF pregunta, en el fondo, si la serie se comporta como ese paseo.
 
@@ -166,6 +174,10 @@ Lo primero que muestra la tabla es que **los tests no alcanzan para elegir**: la
 Hay un argumento a favor de `D = 1`: sin diferenciar, la autocorrelación en los múltiplos de 7 casi no baja (0,40 en el retardo 7, 0,33 en el 49). Pero eso es lo que produce un ciclo **fijo**: si cada domingo suma lo mismo, un domingo se parece a todos los anteriores, estén a una o a siete semanas.
 
 La decisión es `d = 0` y `D = 0`: el modelo base es un SARIMA(p, 0, q)(P, 0, Q)₇ y el ciclo semanal lo capturan los términos estacionales. Como la evidencia sobre `D` no es unánime, la variante con `D = 1` se compara en el backtesting del paso 5, y ahí decide el error (DEC-013).
+
+### Cómo se conecta con la autocorrelación
+
+Los tests y la autocorrelación (sección 8) responden preguntas distintas. ADF y KPSS dicen **si** la serie tiene tendencia o raíz unitaria, con un sí o un no. La autocorrelación muestra **cómo** depende cada día de los anteriores: si el ciclo semanal sigue ahí (valores altos en 7, 14, 21), o si diferenciar de más dejó un −0,5. Por eso en la parte B los tests no alcanzaron para elegir entre las cuatro versiones, y la decisión salió de la autocorrelación y el desvío.
 
 ## 8. Autocorrelación: ACF y PACF (paso 4)
 
