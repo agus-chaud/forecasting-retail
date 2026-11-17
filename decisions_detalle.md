@@ -320,3 +320,40 @@ Efecto medido: ADF −3,569 (p = 0,0064) en la original contra −3,573 (p = 0,0
 **Código afectado:** `03_notebooks/04_SARIMA.ipynb`, sección 3, parte B (secciones 3.4 y 3.5).
 
 ---
+
+## DEC-014: Lista corta de candidatos de SARIMA leída de ACF/PACF
+
+**Área:** modelado | **Fase:** 04 SARIMA (paso 4, partes A y B) | **Fecha:** 2026-11-17 | **Estado:** Vigente
+
+**Decisión:** Los gráficos de ACF y PACF de `y_modelo` sin diferenciar dan un punto de partida, SARIMA(1, 0, 0)(1, 0, 0)₇, y el paso 5 compara una lista corta (`GRILLA_ORDENES`) con backtesting y AIC:
+
+| Candidato | `order` | `seasonal_order` |
+|---|---|---|
+| base | (1, 0, 0) | (1, 0, 0, 7) |
+| `q = 1` | (1, 0, 1) | (1, 0, 0, 7) |
+| `p = 2` | (2, 0, 0) | (1, 0, 0, 7) |
+| `Q = 1` | (1, 0, 0) | (1, 0, 1, 7) |
+| `P = 2` | (1, 0, 0) | (2, 0, 0, 7) |
+| `D = 1` (DEC-013) | (1, 0, 0) | (0, 1, 1, 7) |
+
+Funciones: `tabla_acf_pacf`, `graficar_acf_pacf`.
+
+**Alternativa descartada:** (a) Elegir un solo modelo a ojo con la lectura de los gráficos. (b) Una búsqueda automática amplia (todas las combinaciones hasta un orden máximo, por ejemplo con `auto_arima`).
+
+**Por qué la descartamos:**
+
+| Opción | Problema |
+|---|---|
+| Un solo modelo a ojo | La lectura no es nítida: en los múltiplos de 7 la ACF no se corta ni decae (0,40, 0,35, 0,36, 0,36, 0,34, 0,29, 0,33) y la PACF baja de a poco (0,24, 0,16, 0,17, 0,08, 0,11, 0,06, 0,09). Los gráficos no distinguen entre `P = 1` y `P = 2`, ni dicen nada sobre `Q` |
+| Búsqueda amplia | Cada especificación extra es otra comparación contra solo 6 cortes de 28 días. Cuantas más se prueban, más probable es que gane una por azar, el mismo problema que DEC-011 evita con `valid`. Además cada ajuste de un SARIMA estacional tiene costo de cómputo |
+| Lista corta (elegida) | Los gráficos acotan los candidatos y el backtesting decide entre pocos, cada uno con un motivo |
+
+Lo que muestran los gráficos:
+- **Retardos cortos (parte A):** la PACF vale 0,43 en el retardo 1 y 0,01, −0,05 y 0,00 en los retardos 2 a 4, dentro de la franja (±0,06). La ACF decae: 0,43, 0,20, 0,05, 0,00. Un AR(1) puro daría 0,43² = 0,19 en el retardo 2, y la observada es 0,20. Lectura: `p = 1`, `q = 0`.
+- **Retardos estacionales (parte B):** el retardo 7 es el más fuerte de la PACF (0,24); los retardos 14 y 21 (0,16 y 0,17) hacen de `P = 2` una alternativa. La ACF no se corta, así que `Q` solo puede ser una alternativa. Los retardos 6 y 8 (ACF 0,28 y 0,27) flanquean al 7 y se toman como parte del ciclo semanal, no como un AR de orden 6.
+
+**Conclusión:** Usar ACF/PACF para acotar candidatos y decidir entre ellos con el backtesting. Si los residuos del modelo con `P = 1` dejan barras en los retardos 5 y 6, revisar. Si el coeficiente estacional sale cerca de 1 o el ajuste no converge, queda pendiente probar variables indicadoras del día de la semana (ver pendientes en `decisions.md`).
+
+**Código afectado:** `03_notebooks/04_SARIMA.ipynb`, sección 4, partes A y B (`GRILLA_ORDENES`, `tabla_acf_pacf`, `graficar_acf_pacf`).
+
+---

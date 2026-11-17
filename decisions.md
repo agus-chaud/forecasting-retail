@@ -27,6 +27,7 @@ los dos archivos.
 | DEC-011 | evaluacion | MAE a 28 días, líneas base y backtesting de 6 cortes dentro de `train`; `valid` una sola vez al final |
 | DEC-012 | modelado | En la serie de aprendizaje, los 25 de diciembre se imputan con el mismo día de la semana anterior (`y[t-7]`) |
 | DEC-013 | modelado | Sin diferenciar: `d = 0` y `D = 0`; el ciclo semanal (fijo) se modela con términos estacionales `P`, `Q` (`s = 7`); `D = 1` solo como alternativa en el backtesting |
+| DEC-014 | modelado | Órdenes leídos de ACF/PACF: partida SARIMA(1, 0, 0)(1, 0, 0)₇ y lista corta de 6 candidatos a comparar en el backtesting, sin elegir uno a ojo ni probar todo |
 
 ---
 
@@ -39,6 +40,7 @@ los dos archivos.
 | Tratamiento del 25 de diciembre (tiendas cerradas, ventas 0 en las 20 series): variable propia o filtrado. Ya resuelto para la serie de aprendizaje de SARIMA (DEC-012); falta para el resto de las series | feature-engineering |
 | Cómo representar la promoción de agosto-septiembre 2013 de `FOODS_3_090` (por ejemplo, precio relativo a la mediana de la serie) | feature-engineering |
 | Probar un efecto de día del mes como variable externa del SARIMAX (por ejemplo, primera o segunda mitad del mes, o Fourier del día del mes). Mirada rápida en `CA_3` / `FOODS_3_586`: los días 1 a 13 venden entre 1 % y 10 % más que la media y los días 22 a 31 entre 0 % y 14 % menos (posible efecto del cobro o de la ayuda alimentaria SNAP, columna `snap_CA` que el tablón no tiene). Sin test todavía; se conserva solo si baja el error del backtesting | modelado |
+| Si el SARIMA con `P = 1` sale inestable o no converge (la ACF estacional se queda en 0,3 a 0,4 durante 49 retardos), probar variables indicadoras del día de la semana en vez de términos estacionales | modelado |
 | Cuántos pares de Fourier (`K`) usar para el ciclo anual en SARIMAX: elegir en el paso 5 comparando el error en el backtesting dentro de `train` (DEC-011), no en `valid` | modelado |
 
 ---
@@ -70,5 +72,7 @@ los dos archivos.
 **DEC-012 — 25 de diciembre imputado en la serie de aprendizaje.** En `CA_3` / `FOODS_3_586` los dos 25 de diciembre (ventas 0, tienda cerrada) se reemplazan por el valor del mismo día de la semana anterior: 67 en 2013 y 73 en 2014 (`y_modelo`). **Por qué:** los pasos 3 y 4 usan la serie sola, sin variables externas, así que una variable indicadora recién podría entrar en el paso 5; mientras tanto esos ceros contaminan la descomposición (MSTL los copió como −59). Ni `valid` ni los cortes del backtesting incluyen un 25 de diciembre, así que la evaluación no cambia, y los tests ADF/KPSS dan casi lo mismo (ADF −3,57 en las dos versiones). **Regla:** Un cero por tienda cerrada no es demanda: tratarlo antes de modelar y pronosticar los cierres futuros con una regla (cerrado = 0), no con el modelo.
 
 **DEC-013 — Sin diferenciar (`d = 0`, `D = 0`).** El SARIMA base es (p, 0, q)(P, 0, Q)₇ sobre `y_modelo`; la variante con `D = 1` se compara en el backtesting del paso 5. **Por qué:** las cuatro combinaciones pasan ADF y KPSS, así que los tests no deciden. `d = 1` deja −0,29 en el retardo 1 y sube el desvío de 17,7 a 18,8; `D = 1` deja −0,45 en el retardo 7 (huella de sobrediferenciación) y sube el desvío a 19,3. La fuerza estacional semanal es 0,46, por debajo del umbral de 0,64 para `D = 1`. La autocorrelación plana en los múltiplos de 7 (0,40 a 0,33) es la de un ciclo fijo, que se modela con términos estacionales y no se resta. **Regla:** Usar la menor cantidad de diferencias que deja la serie estacionaria; cuando los tests no discriminan, decidir con la autocorrelación en el retardo diferenciado (−0,5 = sobra) y con el desvío.
+
+**DEC-014 — Lista corta de candidatos leída de ACF/PACF.** El paso 5 compara el modelo de partida SARIMA(1, 0, 0)(1, 0, 0)₇ y cinco variantes: `q = 1`, `p = 2`, `Q = 1`, `P = 2` y `D = 1` con (0, 1, 1)₇. **Por qué:** en los retardos cortos la PACF se corta después del 1 (0,43; luego 0,01, −0,05 y 0,00) y la ACF decae (0,43, 0,20, 0,05): AR(1). En los múltiplos de 7 la ACF no se corta ni decae (0,40 a 0,33) y la PACF baja de a poco (0,24, 0,16, 0,17): la lectura no da un único modelo. **Regla:** Usar ACF/PACF para acotar candidatos y elegir entre ellos con el backtesting, no al revés.
 
 ---

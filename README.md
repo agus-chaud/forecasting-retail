@@ -75,6 +75,7 @@ Horizonte de 28 días, MAE como métrica, dos líneas base y backtesting con 6 c
 | Estacionalidad | Fin de semana +17 % / +23 % | El ciclo semanal es la señal principal |
 | Estacionariedad | ADF p = 0,006, KPSS p ≈ 0,07 | Sin tendencia: se parte de `d = 0` |
 | Línea base | MAE 13,7 (media de 4 semanas) contra 18,2 (naive estacional) | Un SARIMA debe bajar de 13,7 para justificarse |
+| Autocorrelación | PACF se corta tras el retardo 1 (0,43); ACF en múltiplos de 7 entre 0,29 y 0,40 | AR(1) más ciclo semanal fijo: se parte de SARIMA(1, 0, 0)(1, 0, 0)₇ y se comparan 6 candidatos (DEC-014) |
 
 ## Estructura del proyecto
 
